@@ -12,7 +12,12 @@
           "package_name": "com.example.sympli_ai_health"
         }
       },
-      "oauth_client": [],
+      "oauth_client": [
+        {
+          "client_id": "526754016534-69sqadn7idt6tsih2ekc470qhfjbprog.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
       "api_key": [
         {
           "current_key": "AIzaSyDofhiEdhTOzBEMlN2B_saVgBxFk_tEaEY"
@@ -20,7 +25,12 @@
       ],
       "services": {
         "appinvite_service": {
-          "other_platform_oauth_client": []
+          "other_platform_oauth_client": [
+            {
+              "client_id": "526754016534-69sqadn7idt6tsih2ekc470qhfjbprog.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
         }
       }
     }

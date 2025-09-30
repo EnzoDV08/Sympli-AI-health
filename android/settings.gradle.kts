@@ -1,4 +1,7 @@
+// android/settings.gradle.kts
+
 pluginManagement {
+    // Read flutter sdk path
     val flutterSdkPath =
         run {
             val properties = java.util.Properties()
@@ -19,11 +22,12 @@ pluginManagement {
 
 plugins {
     id("dev.flutter.flutter-plugin-loader") version "1.0.0"
+    // Keep these versions aligned with your Flutter SDK template (yours are fine if the project builds)
     id("com.android.application") version "8.9.1" apply false
-    // START: FlutterFire Configuration
-    id("com.google.gms.google-services") version("4.3.15") apply false
-    // END: FlutterFire Configuration
     id("org.jetbrains.kotlin.android") version "2.1.0" apply false
+
+    // ✅ Update this one:
+    id("com.google.gms.google-services") version "4.4.2" apply false
 }
 
 include(":app")
