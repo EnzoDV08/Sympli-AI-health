@@ -4,6 +4,10 @@ import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:go_router/go_router.dart';
+import 'package:sympli_ai_health/app/features/auth/widgets/auth_text_field.dart';
+import 'package:sympli_ai_health/app/features/auth/services/auth_service.dart';
+
+
 
 class SignUpForm extends StatefulWidget {
   const SignUpForm({super.key, required this.onGoSignIn});
@@ -112,84 +116,70 @@ class _SignUpFormState extends State<SignUpForm> {
     });
   }
 
-  Future<void> _register() async {
-    if (!_formReady) return;
+Future<void> _register() async {
+  if (!_formReady) return;
 
-    setState(() {
-      _loading = true;
-      _emailExists = null; 
-    });
+  setState(() {
+    _loading = true;
+    _emailExists = null;
+  });
 
-    final lower = _username.text.trim().toLowerCase();
-    final email = _email.text.trim();
-    final pass  = _password.text;
+  try {
+    // ✅ Use your central AuthService to handle all creation logic
+    final cred = await AuthService.instance.signUp(
+      username: _username.text.trim(),
+      email: _email.text.trim(),
+      password: _password.text.trim(),
+    );
 
-    try {
-      final cred = await FirebaseAuth.instance.createUserWithEmailAndPassword(
-        email: email,
-        password: pass,
-      );
-      final uid = cred.user!.uid;
-      final fs = FirebaseFirestore.instance;
-      await fs.runTransaction((tx) async {
-        final unameRef = fs.collection('usernames').doc(lower);
-        final unameSnap = await tx.get(unameRef);
-        if (unameSnap.exists) {
-          throw Exception('USERNAME_TAKEN');
-        }
+    if (!mounted) return;
 
-        tx.set(unameRef, {
-          'uid': uid,
-          'createdAt': FieldValue.serverTimestamp(),
-        });
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Account created successfully!')),
+    );
 
-        final userRef = fs.collection('users').doc(uid);
-        tx.set(userRef, {
-          'uid': uid,
-          'email': email,
-          'displayName': _username.text.trim(),
-          'username': lower,
-          'createdAt': FieldValue.serverTimestamp(),
-          'provider': 'password',
-          'photoURL': cred.user!.photoURL,
-          'onboardingComplete': false,
-        }, SetOptions(merge: true));
-      });
+    // ✅ Optional small delay to ensure AuthState updates properly
+    await Future.delayed(const Duration(milliseconds: 800));
 
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Account created!')),
-        );
-        context.go('/intro');
-      }
-    } on FirebaseAuthException catch (e) {
-      String msg = 'Sign up failed';
-      if (e.code == 'email-already-in-use') {
+    // Go to your next screen
+    context.go('/intro');
+  } on FirebaseAuthException catch (e) {
+    String msg;
+    switch (e.code) {
+      case 'email-already-in-use':
         msg = 'Email already in use';
-        setState(() => _emailExists = true); 
-      } else if (e.code == 'invalid-email') {
+        setState(() => _emailExists = true);
+        break;
+      case 'invalid-email':
         msg = 'Invalid email';
-      } else if (e.code == 'weak-password') {
+        break;
+      case 'weak-password':
         msg = 'Weak password';
-      }
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
-      }
-    } catch (e) {
-      if (FirebaseAuth.instance.currentUser != null) {
-        try { await FirebaseAuth.instance.currentUser!.delete(); } catch (_) {}
-      }
-      final msg = e.toString().contains('USERNAME_TAKEN')
-          ? 'Username already taken. Pick another one.'
-          : 'Unexpected error. Please try again.';
-      if (mounted) {
+        break;
+      case 'username-already-in-use':
+        msg = 'Username already taken';
         _onUsernameChanged();
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
-      }
-    } finally {
-      if (mounted) setState(() => _loading = false);
+        break;
+      default:
+        msg = e.message ?? 'Sign up failed. Please try again.';
     }
+
+    if (mounted) {
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text(msg)));
+    }
+  } catch (e, st) {
+    debugPrint('🔥 Unexpected signup error: $e\n$st');
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Unexpected error. Please try again.')),
+      );
+    }
+  } finally {
+    if (mounted) setState(() => _loading = false);
   }
+}
+
 
   @override
   Widget build(BuildContext context) {
@@ -208,7 +198,7 @@ class _SignUpFormState extends State<SignUpForm> {
             ),
             const SizedBox(height: 18),
 
-            _PillField(
+            PillTextFormField(
               controller: _username,
               hint: 'Username',
               textInputAction: TextInputAction.next,
@@ -227,7 +217,7 @@ class _SignUpFormState extends State<SignUpForm> {
             ),
             const SizedBox(height: 14),
 
-            _PillField(
+            PillTextFormField(
               controller: _email,
               hint: 'Email',
               keyboardType: TextInputType.emailAddress,
@@ -257,7 +247,7 @@ class _SignUpFormState extends State<SignUpForm> {
             ),
             const SizedBox(height: 14),
 
-            _PillField(
+            PillTextFormField(
               controller: _password,
               hint: 'Password',
               obscureText: !_showPass,
@@ -290,7 +280,7 @@ class _SignUpFormState extends State<SignUpForm> {
             ]),
             const SizedBox(height: 14),
 
-            _PillField(
+            PillTextFormField(
               controller: _repeat,
               hint: 'Repeat Password',
               obscureText: !_showRepeat,
@@ -332,7 +322,7 @@ class _SignUpFormState extends State<SignUpForm> {
                         TextSpan(
                           text: 'Term & Services',
                           style: const TextStyle(color: blue, fontWeight: FontWeight.w600),
-                          recognizer: TapGestureRecognizer()..onTap = () {/* open terms */}),
+                          recognizer: TapGestureRecognizer()..onTap = () {}),
                       ],
                     ),
                   ),
@@ -473,48 +463,6 @@ class _HintChecklist extends StatelessWidget {
           ],
         );
       }).toList(),
-    );
-  }
-}
-
-class _PillField extends StatelessWidget {
-  const _PillField({
-    required this.controller,
-    required this.hint,
-    this.keyboardType,
-    this.textInputAction,
-    this.obscureText = false,
-    this.validator,
-    this.suffix,
-  });
-
-  final TextEditingController controller;
-  final String hint;
-  final TextInputType? keyboardType;
-  final TextInputAction? textInputAction;
-  final bool obscureText;
-  final String? Function(String?)? validator;
-  final Widget? suffix;
-
-  @override
-  Widget build(BuildContext context) {
-    return TextFormField(
-      controller: controller,
-      keyboardType: keyboardType,
-      textInputAction: textInputAction,
-      obscureText: obscureText,
-      validator: validator,
-      style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w600),
-      decoration: InputDecoration(
-        hintText: hint,
-        hintStyle: const TextStyle(color: _SignUpFormState.hintColor, fontWeight: FontWeight.w600),
-        contentPadding: const EdgeInsets.symmetric(horizontal: 18, vertical: 16),
-        filled: true,
-        fillColor: _SignUpFormState.pillColor,
-        suffixIcon: suffix,
-        border: OutlineInputBorder(borderRadius: BorderRadius.circular(18), borderSide: BorderSide.none),
-        focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(18), borderSide: BorderSide.none),
-      ),
     );
   }
 }

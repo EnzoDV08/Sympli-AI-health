@@ -8,7 +8,6 @@ class AuthService {
   final _auth = FirebaseAuth.instance;
   final _db = FirebaseFirestore.instance;
 
-
   Future<bool> isUsernameAvailable(String raw) async {
     final uname = _normalizeUsername(raw);
     if (uname.isEmpty) return false;

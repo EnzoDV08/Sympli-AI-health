@@ -1,12 +1,15 @@
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
-import 'package:go_router/go_router.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:sympli_ai_health/app/core/widgets/sympli_navbar.dart';
+import 'package:url_launcher/url_launcher.dart';
+import 'package:sympli_ai_health/app/core/widgets/ask_bar.dart';
+import 'package:sympli_ai_health/app/core/widgets/triage_section.dart';
+import 'package:sympli_ai_health/app/core/widgets/reminder_widget.dart';
+
+const _kHeaderBg = 'assets/images/header_bg_grain.png';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
-
   @override
   State<HomeScreen> createState() => _HomeScreenState();
 }
@@ -14,312 +17,133 @@ class HomeScreen extends StatefulWidget {
 class _HomeScreenState extends State<HomeScreen> {
   static const bg = Color(0xFFF6F8FB);
 
-  int _tab = 0;
-
   @override
   Widget build(BuildContext context) {
-    final pages = <Widget>[
-      const _HomeTab(),
-      const _LogsTab(),
-      _AccountTab(onSignOut: () async {
-        await FirebaseAuth.instance.signOut();
-        if (context.mounted) context.go('/auth?tab=in');
-      }),
-    ];
-
     return Scaffold(
+      extendBody: true,
       backgroundColor: bg,
-      body: SafeArea(child: pages[_tab]),
-      bottomNavigationBar: SympliNavBar(
-        currentIndex: _tab,
-        onTap: (i) => setState(() => _tab = i),
-        onBellTap: () {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Notifications coming soon')),
-          );
-        },
-      ),
+      body: const _HomeTab(),
     );
   }
 }
+
 
 class _HomeTab extends StatelessWidget {
   const _HomeTab();
 
   @override
   Widget build(BuildContext context) {
-    return SingleChildScrollView(
-      padding: const EdgeInsets.only(bottom: 120),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: const [
-          _HeaderCard(),
-          SizedBox(height: 16),
-          _SearchBar(),
-          SizedBox(height: 20),
-          _SectionTitle('Triage Question'),
-          SizedBox(height: 12),
-          _ChipRow(),
-          SizedBox(height: 20),
-          _SectionTitle('Reminders'),
-          SizedBox(height: 12),
-          _ReminderCard(),
-        ],
-      ),
-    );
-  }
-}
+    final bottomPadding = MediaQuery.of(context).padding.bottom + 80; 
 
-class _HeaderCard extends StatelessWidget {
-  const _HeaderCard();
+    return SafeArea(
+      top: false,
+      bottom: false,
+      child: SingleChildScrollView(
+        clipBehavior: Clip.none,
+        padding: EdgeInsets.only(bottom: bottomPadding), 
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const _HeaderCard(),
+            const SizedBox(height: 16),
 
-  @override
-  Widget build(BuildContext context) {
-    final user = FirebaseAuth.instance.currentUser;
-    final name = (user?.displayName?.trim().isNotEmpty ?? false)
-        ? user!.displayName!
-        : 'Enzo';
+            const SizedBox(height: 8),
+            AskBar(),
 
-    return Container(
-      height: 220,
-      margin: const EdgeInsets.fromLTRB(16, 12, 16, 8),
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(28),
-        gradient: const LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [
-            Color(0xFF10B3A2),
-            Color(0xFF3CB6FF),
-            Color(0xFF6F72FF),
-          ],
-        ),
-        boxShadow: const [
-          BoxShadow(
-            color: Color(0x33000000),
-            blurRadius: 24,
-            offset: Offset(0, 12),
-          )
-        ],
-      ),
-      child: Stack(
-        children: [
-          Positioned(
-            left: 18,
-            top: 18,
-            right: 18,
-            child: Row(
-              children: [
-                const CircleAvatar(
-                  radius: 18,
-                  backgroundColor: Colors.white,
-                  child: Icon(
-                    CupertinoIcons.person_alt_circle_fill,
-                    color: Colors.black54,
-                  ),
-                ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        'Hello $name',
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 16,
-                          fontWeight: FontWeight.w800,
-                        ),
-                      ),
-                      const SizedBox(height: 2),
-                      const Text(
-                        'How are you feeling today?',
-                        style: TextStyle(
-                          color: Colors.white70,
-                          fontSize: 12,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                const _EmsPill(),
-              ],
+            const SizedBox(height: 20),
+
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              child: TriageSection(
+                onSelect: (label) {
+                  debugPrint("User selected triage: $label");
+                },
+              ),
             ),
-          ),
-          Positioned.fill(
-            child: Align(
-              alignment: Alignment.center,
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
+
+            const SizedBox(height: 12),
+
+            Padding(
+              padding: const EdgeInsets.only(left: 16, right: 16, top: 4, bottom: 6),
+              child: Row(
                 children: const [
-                  Icon(Icons.local_hospital_rounded,
-                      color: Colors.white70, size: 46),
-                  SizedBox(height: 8),
+                  Icon(
+                    CupertinoIcons.bell_fill,
+                    color: Color(0xFF5C8CFF),
+                    size: 20,
+                  ),
+                  SizedBox(width: 8),
                   Text(
-                    "Welcome to\nSympli Chat",
-                    textAlign: TextAlign.center,
+                    "Reminders",
                     style: TextStyle(
-                      color: Colors.white,
-                      height: 1.15,
-                      fontSize: 28,
-                      fontWeight: FontWeight.w900,
+                      color: Color(0xFF3B5FFF),
+                      fontSize: 18,
+                      fontWeight: FontWeight.w800,
                       letterSpacing: 0.2,
                     ),
                   ),
                 ],
               ),
             ),
-          ),
-        ],
-      ),
-    );
-  }
-}
 
-class _EmsPill extends StatelessWidget {
-  const _EmsPill();
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-      decoration: BoxDecoration(
-        color: const Color(0xFFFF758F),
-        borderRadius: BorderRadius.circular(24),
-        boxShadow: const [
-          BoxShadow(color: Color(0x33000000), blurRadius: 8, offset: Offset(0, 3)),
-        ],
-      ),
-      child: Row(
-        children: const [
-          Icon(CupertinoIcons.plus_app_fill, size: 16, color: Colors.white),
-          SizedBox(width: 6),
-          Text(
-            "EMS",
-            style: TextStyle(
-              color: Colors.white,
-              fontWeight: FontWeight.w800,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _SearchBar extends StatelessWidget {
-  const _SearchBar();
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      height: 52,
-      margin: const EdgeInsets.symmetric(horizontal: 16),
-      padding: const EdgeInsets.symmetric(horizontal: 18),
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(28),
-        gradient: const LinearGradient(
-          colors: [Color(0xFF5ED4C4), Color(0xFF6EC0FF)],
-        ),
-        boxShadow: const [
-          BoxShadow(
-            color: Color(0x22000000),
-            blurRadius: 14,
-            offset: Offset(0, 8),
-          ),
-        ],
-      ),
-      child: Row(
-        children: const [
-          Expanded(
-            child: Text(
-              "Ask me anything...",
-              style: TextStyle(
-                color: Colors.white,
-                fontWeight: FontWeight.w600,
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              child: Column(
+                children: const [
+                  ReminderWidget(
+                    time: "10:45 am",
+                    title: "Take your medicine in 1H 15M",
+                    subtitle: "Remember to take your antibiotics with water.",
+                  ),
+                  SizedBox(height: 12),
+                  ReminderWidget(
+                    time: "4:00 pm",
+                    title: "Drink a glass of water",
+                    subtitle: "Hydration reminder from Sympli AI.",
+                    color: Color(0xFF52E3C2),
+                  ),
+                ],
               ),
             ),
-          ),
-          Icon(CupertinoIcons.search, color: Colors.white),
-        ],
-      ),
-    );
-  }
-}
-
-class _SectionTitle extends StatelessWidget {
-  final String text;
-  const _SectionTitle(this.text);
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16),
-      child: Text(
-        text,
-        style: const TextStyle(
-          color: Color(0xFF102236),
-          fontSize: 16,
-          fontWeight: FontWeight.w700,
+          ],
         ),
       ),
     );
   }
 }
 
-class _ChipRow extends StatelessWidget {
-  const _ChipRow();
+
+class _HeaderCard extends StatelessWidget {
+  const _HeaderCard();
 
   @override
   Widget build(BuildContext context) {
-    return SizedBox(
-      height: 64,
-      child: ListView(
-        padding: const EdgeInsets.symmetric(horizontal: 16),
-        scrollDirection: Axis.horizontal,
-        children: const [
-          _ActionChip(icon: Icons.medication_rounded, label: "Medication"),
-          _ActionChip(icon: Icons.monitor_heart_rounded, label: "Symptom"),
-          _ActionChip(icon: Icons.psychology_alt_rounded, label: "AI help"),
-        ],
-      ),
-    );
-  }
-}
+    final topInset = MediaQuery.of(context).padding.top;
+    const bottomRadius = 96.0;
+    final headerHeight = 320.0 + topInset;
 
-class _ActionChip extends StatelessWidget {
-  final IconData icon;
-  final String label;
-  const _ActionChip({required this.icon, required this.label});
-
-  @override
-  Widget build(BuildContext context) {
     return Container(
-      height: 48,
-      padding: const EdgeInsets.symmetric(horizontal: 14),
-      margin: const EdgeInsets.only(right: 12),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(28),
-        border: Border.all(color: const Color(0xFFE6ECF3)),
-        boxShadow: const [
-          BoxShadow(
-            color: Color(0x11000000),
-            blurRadius: 10,
-            offset: Offset(0, 6),
-          )
-        ],
+      margin: const EdgeInsets.only(bottom: 8),
+      height: headerHeight,
+      width: double.infinity,
+      clipBehavior: Clip.antiAlias,
+      decoration: const BoxDecoration(
+        borderRadius: BorderRadius.only(
+          bottomLeft: Radius.circular(bottomRadius),
+          bottomRight: Radius.circular(bottomRadius),
+        ),
       ),
-      child: Row(
+      child: Stack(
+        fit: StackFit.expand,
         children: [
-          Icon(icon, size: 18, color: const Color(0xFF102236).withValues(alpha: .8)),
-          const SizedBox(width: 8),
-          Text(
-            label,
-            style: const TextStyle(
-              color: Color(0xFF102236),
-              fontWeight: FontWeight.w700,
+          const _HeaderBackground(),
+          Padding(
+            padding: EdgeInsets.only(top: topInset),
+            child: Stack(
+              children: const [
+                _HeaderTopRow(),
+                _HeaderCenterBlock(),
+              ],
             ),
           ),
         ],
@@ -328,211 +152,296 @@ class _ActionChip extends StatelessWidget {
   }
 }
 
-class _ReminderCard extends StatelessWidget {
-  const _ReminderCard();
+class _HeaderCenterBlock extends StatelessWidget {
+  const _HeaderCenterBlock();
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      constraints: const BoxConstraints(minHeight: 160),
-      margin: const EdgeInsets.symmetric(horizontal: 16),
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: const Color(0xFF3E8BFF),
-        borderRadius: BorderRadius.circular(28),
-        boxShadow: const [
-          BoxShadow(
-            color: Color(0x33000000),
-            blurRadius: 16,
-            offset: Offset(0, 10),
-          )
-        ],
+    const logoSize = 115.0;
+    const haloSize = 124.0;
+
+    return Positioned.fill(
+      child: Align(
+        alignment: const Alignment(-0.2, 0.44),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Stack(
+              alignment: Alignment.center,
+              children: [
+                Transform.translate(
+                  offset: const Offset(15, 0),
+                  child: Container(
+                    width: haloSize,
+                    height: haloSize,
+                    decoration: const BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: Colors.white,
+                      boxShadow: [
+                        BoxShadow(
+                          color: Color(0x33000000),
+                          blurRadius: 20,
+                          spreadRadius: 6,
+                          offset: Offset(0, 8),
+                        ),
+                        BoxShadow(
+                          color: Color(0x66FFFFFF),
+                          blurRadius: 25,
+                          spreadRadius: 6,
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+                Transform.translate(
+                  offset: const Offset(15, 0),
+                  child: Opacity(
+                    opacity: 0.9,
+                    child: Image.asset(
+                      'assets/images/Sympli_Single_Logo.png',
+                      width: logoSize,
+                      height: logoSize,
+                      fit: BoxFit.contain,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            Transform.translate(
+              offset: const Offset(2, 0),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.center,
+                children: [
+                  Transform.translate(
+                    offset: const Offset(5, -15),
+                    child: Transform.rotate(
+                      angle: -0.26,
+                      child: Image.asset(
+                        'assets/images/Sympli_Bot.png',
+                        width: 45,
+                        height: 45,
+                        fit: BoxFit.contain,
+                        errorBuilder: (_, __, ___) => Image.asset(
+                          'assets/icons/ic_bot.png',
+                          width: 34,
+                          height: 34,
+                          fit: BoxFit.contain,
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  const Text(
+                    "Welcome to\nSympli Chat",
+                    textAlign: TextAlign.left,
+                    style: TextStyle(
+                      color: Color(0xFF24303B),
+                      height: 1.15,
+                      fontSize: 34,
+                      fontWeight: FontWeight.w900,
+                      letterSpacing: 0.1,
+                      shadows: [
+                        Shadow(
+                          blurRadius: 2,
+                          color: Color(0x26FFFFFF),
+                          offset: Offset(0, 1),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
       ),
+    );
+  }
+}
+
+class _HeaderBackground extends StatelessWidget {
+  const _HeaderBackground();
+
+  @override
+  Widget build(BuildContext context) {
+    return DecoratedBox(
+      decoration: const BoxDecoration(
+        image: DecorationImage(
+          image: AssetImage(_kHeaderBg),
+          fit: BoxFit.cover,
+          alignment: Alignment.topCenter,
+        ),
+      ),
+      child: Container(color: Colors.black.withOpacity(0.02)),
+    );
+  }
+}
+
+class _HeaderTopRow extends StatelessWidget {
+  const _HeaderTopRow();
+
+  @override
+  Widget build(BuildContext context) {
+    final user = FirebaseAuth.instance.currentUser;
+    final name = _bestName(user);
+
+    return Positioned(
+      left: 18,
+      top: 18,
+      right: 18,
       child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
+        crossAxisAlignment: CrossAxisAlignment.center,
         children: [
+          _UserAvatar(user: user, radius: 20),
+          const SizedBox(width: 10),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
-              children: const [
-                _TimePill(text: "10:45 am"),
-                SizedBox(height: 10),
+              children: [
                 Text(
-                  "Take your medicine in",
-                  style: TextStyle(
+                  'Hello $name',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
                     color: Colors.white,
                     fontSize: 18,
-                    height: 1.2,
                     fontWeight: FontWeight.w800,
                   ),
                 ),
-                SizedBox(height: 8),
-                Text(
-                  "1H 15M",
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontSize: 36,
-                    fontWeight: FontWeight.w900,
-                    letterSpacing: 1.2,
-                  ),
-                ),
-                SizedBox(height: 6),
-                Text(
-                  "Take your Antibiotics tablets along with water",
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
+                const SizedBox(height: 2),
+                const Text(
+                  'How are you feeling today?',
                   style: TextStyle(
                     color: Colors.white70,
-                    height: 1.1,
+                    fontSize: 13,
                     fontWeight: FontWeight.w600,
                   ),
                 ),
               ],
             ),
           ),
-          const SizedBox(width: 12),
-          SizedBox(
-            width: 120,
-            child: Align(
-              alignment: Alignment.bottomRight,
-              child: Image.asset(
-                'assets/images/pills.png',
-                fit: BoxFit.contain,
-                errorBuilder: (_, __, ___) {
-                  return Wrap(
-                    spacing: 8,
-                    runSpacing: 8,
-                    children: List.generate(
-                      5,
-                      (i) => Container(
-                        width: 22,
-                        height: 22,
-                        decoration: const BoxDecoration(
-                          color: Colors.white,
-                          shape: BoxShape.circle,
-                        ),
-                      ),
-                    ),
-                  );
-                },
-              ),
-            ),
-          ),
+          const _EmsPill(),
         ],
       ),
     );
   }
 }
 
-class _TimePill extends StatelessWidget {
-  final String text;
-  const _TimePill({required this.text});
+class _UserAvatar extends StatelessWidget {
+  const _UserAvatar({required this.user, this.radius = 20});
+  final User? user;
+  final double radius;
 
   @override
   Widget build(BuildContext context) {
+    final photo = user?.photoURL ?? '';
+    final hasPhoto = photo.trim().isNotEmpty;
+
+    Widget placeholder() => Icon(
+          CupertinoIcons.person_alt_circle_fill,
+          color: Colors.black54,
+          size: radius * 1.8,
+        );
+
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      padding: const EdgeInsets.all(2),
       decoration: BoxDecoration(
-        color: const Color(0xFFFFC043),
-        borderRadius: BorderRadius.circular(12),
+        shape: BoxShape.circle,
+        color: Colors.white.withOpacity(.25),
       ),
-      child: Text(
-        text,
-        style: const TextStyle(
-          color: Color(0xFF2E2E2E),
-          fontWeight: FontWeight.w800,
-          fontSize: 12,
+      child: CircleAvatar(
+        radius: radius,
+        backgroundColor: Colors.white,
+        backgroundImage: hasPhoto ? NetworkImage(photo) : null,
+        child: hasPhoto
+            ? null
+            : ClipOval(
+                child: Image.asset(
+                  'assets/icons/ic_avatar_placeholder.png',
+                  width: radius * 2,
+                  height: radius * 2,
+                  fit: BoxFit.cover,
+                  errorBuilder: (_, __, ___) => placeholder(),
+                ),
+              ),
+      ),
+    );
+  }
+}
+
+String _bestName(User? user) {
+  final dn = user?.displayName?.trim();
+  if (dn != null && dn.isNotEmpty) return dn;
+  final email = user?.email?.trim() ?? '';
+  if (email.isNotEmpty && email.contains('@')) {
+    final raw = email.split('@').first;
+    if (raw.isNotEmpty) {
+      return raw
+          .replaceAll('.', ' ')
+          .split(' ')
+          .where((p) => p.isNotEmpty)
+          .map((p) =>
+              p[0].toUpperCase() + (p.length > 1 ? p.substring(1).toLowerCase() : ''))
+          .join(' ');
+    }
+  }
+  return 'there';
+}
+
+class _EmsPill extends StatelessWidget {
+  const _EmsPill();
+
+  Future<void> _dialAmbulance(BuildContext context) async {
+    final uri = Uri(scheme: 'tel', path: '10177');
+    try {
+      if (await canLaunchUrl(uri)) {
+        await launchUrl(uri, mode: LaunchMode.platformDefault);
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Dial 10177 (ambulance)')),
+        );
+      }
+    } catch (_) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Dial 10177 (ambulance)')),
+      );
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      borderRadius: BorderRadius.circular(26),
+      onTap: () => _dialAmbulance(context),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+        decoration: BoxDecoration(
+          color: const Color(0xFFFF758F),
+          borderRadius: BorderRadius.circular(26),
+          boxShadow: const [
+            BoxShadow(color: Color(0x33000000), blurRadius: 8, offset: Offset(0, 3)),
+          ],
+        ),
+        child: Row(
+          children: [
+            Image.asset(
+              'assets/icons/ic_phone.png',
+              width: 16,
+              height: 16,
+              color: Colors.white,
+              errorBuilder: (_, __, ___) =>
+                  const Icon(CupertinoIcons.phone_fill, size: 16, color: Colors.white),
+            ),
+            const SizedBox(width: 8),
+            const Text(
+              "EMS",
+              style: TextStyle(color: Colors.white, fontWeight: FontWeight.w800),
+            ),
+          ],
         ),
       ),
-    );
-  }
-}
-
-class _LogsTab extends StatelessWidget {
-  const _LogsTab();
-
-  @override
-  Widget build(BuildContext context) {
-    return const Center(
-      child: _GlassCard(
-        child: Padding(
-          padding: EdgeInsets.all(12),
-          child: Text('Logs will appear here.'),
-        ),
-      ),
-    );
-  }
-}
-
-class _AccountTab extends StatelessWidget {
-  const _AccountTab({required this.onSignOut});
-  final Future<void> Function() onSignOut;
-
-  @override
-  Widget build(BuildContext context) {
-    final user = FirebaseAuth.instance.currentUser;
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 20, 16, 120),
-      child: Column(
-        children: [
-          const _GlassCard(
-            child: ListTile(
-              leading: CircleAvatar(child: Icon(Icons.person)),
-              title: Text('Account'),
-              subtitle: Text('Signed in with email'),
-            ),
-          ),
-          const SizedBox(height: 16),
-          _GlassCard(
-            child: ListTile(
-              title: Text(user?.email ?? 'Unknown'),
-              subtitle: Text(user?.uid ?? ''),
-            ),
-          ),
-          const SizedBox(height: 16),
-          SizedBox(
-            width: double.infinity,
-            height: 48,
-            child: ElevatedButton.icon(
-              onPressed: onSignOut,
-              icon: const Icon(Icons.logout_rounded),
-              label: const Text('Sign out'),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xFFEF6A67),
-                foregroundColor: Colors.white,
-                shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(14)),
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _GlassCard extends StatelessWidget {
-  const _GlassCard({required this.child});
-  final Widget child;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: .9),
-        borderRadius: BorderRadius.circular(18),
-        boxShadow: const [
-          BoxShadow(
-            blurRadius: 24,
-            spreadRadius: -8,
-            offset: Offset(0, 12),
-            color: Color(0x1A000000),
-          )
-        ],
-        border: Border.all(color: const Color(0x11FFFFFF)),
-      ),
-      child: child,
     );
   }
 }

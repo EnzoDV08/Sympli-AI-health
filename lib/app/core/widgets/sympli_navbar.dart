@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 
 class SympliNavBar extends StatelessWidget {
   final int currentIndex;
@@ -18,73 +19,82 @@ class SympliNavBar extends StatelessWidget {
     const inactive = Color(0xFF9AA7B8);
     const active = Color(0xFF3B82F6);
 
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-      child: Row(
-        children: [
-          Expanded(
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
-              decoration: BoxDecoration(
-                color: darkBg,
-                borderRadius: BorderRadius.circular(40),
-                boxShadow: const [
-                  BoxShadow(
-                    color: Color(0x33000000),
-                    blurRadius: 12,
-                    offset: Offset(0, 4),
-                  )
-                ],
-              ),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceAround,
-                children: [
-                  _NavItem(
-                    icon: Icons.home_rounded,
-                    label: "Home",
-                    active: currentIndex == 0,
-                    onTap: () => onTap(0),
-                  ),
-                  _NavItem(
-                    icon: Icons.history_rounded,
-                    label: "Logs",
-                    active: currentIndex == 1,
-                    onTap: () => onTap(1),
-                  ),
-                  _NavItem(
-                    icon: Icons.person_rounded,
-                    label: "Account",
-                    active: currentIndex == 2,
-                    onTap: () => onTap(2),
-                  ),
-                ],
-              ),
-            ),
-          ),
-          const SizedBox(width: 12),
-          InkWell(
-            onTap: onBellTap,
-            borderRadius: BorderRadius.circular(40),
-            child: Container(
-              padding: const EdgeInsets.all(12),
-              decoration: const BoxDecoration(
-                color: darkBg,
-                shape: BoxShape.circle,
-                boxShadow: [
-                  BoxShadow(
-                    color: Color(0x33000000),
-                    blurRadius: 12,
-                    offset: Offset(0, 4),
-                  )
-                ],
-              ),
-              child: Icon(
-                Icons.notifications_rounded,
-                color: currentIndex == 3 ? active : inactive,
+    final currentPath = GoRouterState.of(context).uri.toString();
+
+    return SafeArea(
+      top: false,
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(12, 0, 12, 18),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Flexible(
+              child: Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
+                decoration: BoxDecoration(
+                  color: darkBg,
+                  borderRadius: BorderRadius.circular(40),
+                  boxShadow: const [
+                    BoxShadow(
+                      color: Color(0x33000000),
+                      blurRadius: 12,
+                      offset: Offset(0, 4),
+                    ),
+                  ],
+                ),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                  children: [
+                    _NavItem(
+                      icon: Icons.home_rounded,
+                      label: "Home",
+                      active: currentPath == '/home',
+                      onTap: () => context.go('/home'),
+                    ),
+                    _NavItem(
+                      icon: Icons.history_rounded,
+                      label: "Logs",
+                      active: currentPath == '/logs',
+                      onTap: () => context.go('/logs'),
+                    ),
+                    _NavItem(
+                      icon: Icons.person_rounded,
+                      label: "Account",
+                      active: currentPath == '/account',
+                      onTap: () => context.go('/account'),
+                    ),
+                  ],
+                ),
               ),
             ),
-          ),
-        ],
+            const SizedBox(width: 8),
+
+            InkWell(
+              onTap: onBellTap,
+              borderRadius: BorderRadius.circular(40),
+              child: Container(
+                padding: const EdgeInsets.all(17),
+                decoration: const BoxDecoration(
+                  color: darkBg,
+                  shape: BoxShape.circle,
+                  boxShadow: [
+                    BoxShadow(
+                      color: Color(0x33000000),
+                      blurRadius: 10,
+                      offset: Offset(0, 3),
+                    ),
+                  ],
+                ),
+                child: const Icon(
+                  Icons.notifications_rounded,
+                  color: inactive,
+                  size: 26, 
+                ),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -112,11 +122,11 @@ class _NavItem extends StatelessWidget {
       onTap: onTap,
       borderRadius: BorderRadius.circular(24),
       child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
         child: Row(
           children: [
             Icon(icon, size: 20, color: active ? activeColor : inactive),
-            const SizedBox(width: 6),
+            const SizedBox(width: 5),
             Text(
               label,
               style: TextStyle(

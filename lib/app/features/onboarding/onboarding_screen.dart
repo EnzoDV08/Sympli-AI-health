@@ -10,7 +10,6 @@ class OnboardingScreen extends StatefulWidget {
 }
 
 class _OnboardingScreenState extends State<OnboardingScreen> {
-  // Layout constants
   static const double kTopGap = 44;
   static const double kCardHeight = 380;
   static const double kImageHeight = 260;
@@ -21,7 +20,6 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
   static const double kTitleBoxHeight = 36;
   static const double kSubtitleBoxHeight = 44;
 
-  // Bubble (backdrop) FX
   static const double bubbleDiameter = 320;
   static const double bubbleBlur = 48;
   static const double bubbleOpacity = 0.38;
@@ -31,14 +29,12 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
   Timer? _autoTimer;
   int _index = 0;
 
-  // Colors
   static const slate = Color(0xFF0F172A);
   static const blue = Color(0xFF3B82F6);
   static const emerald = Color(0xFF10B981);
   static const coral = Color(0xFFEF6A67);
   static const muted = Color(0xFFCBD5E1);
 
-  // Slides
   final _slides = const [
     (img: 'assets/images/Sympli_Bot.png', title: 'Sympli Chat',             subtitle: 'Ask anything — triage, meds, symptoms and more.'),
     (img: 'assets/images/Reminder.png',   title: 'Reminders',               subtitle: 'Never miss a dose. Smart alerts you can trust.'),
@@ -49,14 +45,12 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
 
   bool _warmedUp = false;
 
-  // Made synchronous: no awaits, so no BuildContext across async gaps.
   void _warmUp() {
     for (final s in _slides) {
       precacheImage(AssetImage(s.img), context);
     }
     precacheImage(const AssetImage('assets/images/Google_Logo.png'), context);
 
-    // Flip the flag on the next frame (no async gaps here)
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
       setState(() => _warmedUp = true);
@@ -67,7 +61,6 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
   void initState() {
     super.initState();
 
-    // Auto-advance slides
     _autoTimer = Timer.periodic(const Duration(seconds: 4), (_) {
       if (!mounted) return;
       final next = (_index + 1) % _slides.length;
@@ -78,7 +71,6 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
       );
     });
 
-    // Warm-up images after first frame
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) _warmUp();
     });
@@ -120,13 +112,12 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                   children: [
                     SizedBox(height: topGap),
 
-                    // Card area with bubble + image pager
                     SizedBox(
                       height: cardHeight,
                       child: Stack(
                         alignment: Alignment.center,
                         children: [
-                          // Bubble background
+                          
                           AnimatedContainer(
                             duration: bubbleAnim,
                             curve: Curves.easeOut,
@@ -137,7 +128,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                               color: _bubbleColors[_index].withValues(alpha: bubbleOpacity),
                             ),
                           ),
-                          // Blur only after warm-up to avoid jank
+                          
                           Positioned.fill(
                             child: IgnorePointer(
                               child: _warmedUp
@@ -151,7 +142,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                                   : const SizedBox.shrink(),
                             ),
                           ),
-                          // Slides
+
                           PageView.builder(
                             controller: _pageController,
                             itemCount: _slides.length,
@@ -181,7 +172,6 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                       ),
                     ),
 
-                    // Dots
                     Padding(
                       padding: EdgeInsets.only(top: dotsPad),
                       child: Row(
@@ -202,7 +192,6 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                       ),
                     ),
 
-                    // Title + Subtitle
                     Padding(
                       padding: EdgeInsets.fromLTRB(24, titlePad, 24, 0),
                       child: Opacity(
@@ -257,7 +246,6 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                     const Divider(indent: 24, endIndent: 24),
                     SizedBox(height: ctasGap),
 
-                    // CTAs
                     Padding(
                       padding: const EdgeInsets.symmetric(horizontal: 24),
                       child: Column(
@@ -347,7 +335,6 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
   }
 }
 
-// ---------- FancyTextSwitcher (top-level widget) ----------
 class FancyTextSwitcher extends StatefulWidget {
   final String text;
   final TextStyle style;

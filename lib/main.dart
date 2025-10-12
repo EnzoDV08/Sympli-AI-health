@@ -3,11 +3,13 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:timezone/data/latest.dart' as tz;
+import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:sympli_ai_health/app/features/meds/services/med_reminder_service.dart';
-// import 'package:flutter_native_splash/flutter_native_splash.dart';
-
 import 'package:sympli_ai_health/firebase_options.dart';
 import 'package:sympli_ai_health/app/services/router.dart';
+import 'package:go_router/go_router.dart';
+
+final GlobalKey<NavigatorState> _navKey = GlobalKey<NavigatorState>();
 
 Future<void> _initNotifs() async {
   tz.initializeTimeZones();
@@ -20,17 +22,32 @@ Future<void> _initNotifs() async {
   );
   const settings = InitializationSettings(android: android, iOS: ios);
 
-  await notificationsPlugin.initialize(settings);
-
+  await notificationsPlugin.initialize(
+    settings,
+    onDidReceiveNotificationResponse: (response) {
+      final payload = response.payload;
+      if (payload != null && payload.startsWith('/chat-ai')) {
+        final uri = Uri.parse(payload);
+        final condition = uri.queryParameters['condition'] ?? '';
+        _navKey.currentContext?.go('/chat-ai?condition=$condition');
+      }
+    },
+  );
 }
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  await Firebase.initializeApp(
-    options: DefaultFirebaseOptions.currentPlatform,
-  );
 
+  await dotenv.load(fileName: ".env");
+  await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
   await _initNotifs();
+
+  final openAiKey = dotenv.env['OPENAI_API_KEY'];
+  if (openAiKey == null || openAiKey.isEmpty) {
+    print("OpenAI API Key not loaded!");
+  } else {
+    print("OpenAI API Key loaded (${openAiKey.substring(0, 8)}...)");
+  }
 
   runApp(const ProviderScope(child: MyApp()));
 }
@@ -43,13 +60,17 @@ class MyApp extends ConsumerWidget {
     final router = ref.watch(routerProvider);
 
     return MaterialApp.router(
-      title: 'Sympli',
+      title: 'Sympli AI Health',
       debugShowCheckedModeBanner: false,
       theme: ThemeData(
         colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xFF37B7A5)),
         useMaterial3: true,
       ),
       routerConfig: router,
+      builder: (context, child) => Navigator(
+        key: _navKey,
+        onGenerateRoute: (_) => MaterialPageRoute(builder: (_) => child!),
+      ),
     );
   }
 }
