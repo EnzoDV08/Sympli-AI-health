@@ -1,429 +1,414 @@
-import 'dart:ui';
-import 'package:flutter/material.dart';
-import 'package:flutter_animate/flutter_animate.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:flutter_local_notifications/flutter_local_notifications.dart';
-import 'package:sympli_ai_health/app/features/meds/services/med_reminder_service.dart';
-import 'package:sympli_ai_health/app/features/account/widgets/edit_profile_modal.dart';
+import 'package:flutter/material.dart';
+import 'package:sympli_ai_health/app/features/account/services/profile_repository.dart';
+import 'package:sympli_ai_health/app/utils/logging.dart' as log;
+import 'package:sympli_ai_health/app/features/account/widgets/medication_reminder_list.dart';
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
-
   @override
   State<ProfileScreen> createState() => _ProfileScreenState();
 }
 
-class _ProfileScreenState extends State<ProfileScreen>
-    with SingleTickerProviderStateMixin {
+class _ProfileScreenState extends State<ProfileScreen> {
   final _auth = FirebaseAuth.instance;
-  final _firestore = FirebaseFirestore.instance;
-  final FlutterLocalNotificationsPlugin _plugin =
-      FlutterLocalNotificationsPlugin();
-  late final MedReminderService _medService = MedReminderService(_plugin);
+  final _repo = ProfileRepository();
 
-  Map<String, dynamic>? _profile;
-  List<Map<String, dynamic>> _reminders = [];
-  List<String> _disabilities = [];
-  List<String> _allergies = [];
-  bool _loading = true;
-  int _currentTab = 0;
+  String get _uid => _auth.currentUser?.uid ?? '';
 
-  @override
-  void initState() {
-    super.initState();
-    _loadProfile();
-  }
-
-  Future<void> _loadProfile() async {
-    final uid = _auth.currentUser?.uid;
-    if (uid == null) return;
-
-    final doc = await _firestore.collection('users').doc(uid).get();
-    final data = doc.data()?['profile'] ?? {};
-    final meds = (data['medicationSchedules'] ?? {}) as Map;
-
-    setState(() {
-      _profile = data;
-      _reminders = meds.entries
-          .map((e) => {
-                "name": e.key,
-                "time": e.value['time'],
-                "repeat": e.value['repeat']
-              })
-          .toList();
-      _disabilities = List<String>.from(data['conditions'] ?? []);
-      _allergies = List<String>.from(data['allergies'] ?? []);
-      _loading = false;
-    });
-  }
-
-  Future<void> _removeMedication(String medName) async {
-    final uid = _auth.currentUser?.uid;
-    if (uid == null) return;
-    await _medService.cancelAllFor(medName.hashCode & 0x7FFFFFFF);
-
-    final docRef = _firestore.collection('users').doc(uid);
-    await _firestore.runTransaction((txn) async {
-      final snap = await txn.get(docRef);
-      final data = snap.data()?['profile'] ?? {};
-      final meds = (data['medicationSchedules'] ?? {}) as Map;
-      meds.remove(medName);
-      txn.update(docRef, {'profile.medicationSchedules': meds});
-    });
-
-    setState(() {
-      _reminders.removeWhere((m) => m["name"] == medName);
-    });
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text("Removed reminder for $medName")),
+  Future<void> _pickNewTime(BuildContext ctx, MedicationReminder r) async {
+    final parts = (r.time ?? '08:00').split(':');
+    final initial = TimeOfDay(
+      hour: int.tryParse(parts[0]) ?? 8,
+      minute: int.tryParse(parts[1]) ?? 0,
     );
-  }
 
-  Future<void> _openEditModal() async {
-    final updated = await showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (_) => const EditProfileModal(),
+    final picked = await showTimePicker(
+      context: ctx,
+      initialTime: initial,
+      builder: (context, child) => MediaQuery(
+        data: MediaQuery.of(context).copyWith(alwaysUse24HourFormat: true),
+        child: child ?? const SizedBox.shrink(),
+      ),
     );
-    if (updated == true) _loadProfile();
+    if (picked == null) return;
+
+    final hh = picked.hour.toString().padLeft(2, '0');
+    final mm = picked.minute.toString().padLeft(2, '0');
+    final newTime = '$hh:$mm';
+
+    try {
+      await _repo.updateTime(_uid, r.id, hhmm: newTime);
+      log.logI('⏰ Reminder ${r.id} time updated → $newTime');
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text('Time updated to $newTime')));
+      }
+    } catch (e, st) {
+      log.logE('Failed to update time', e, st);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Could not update time')),
+        );
+      }
+    }
   }
 
-  @override
-  Widget build(BuildContext context) {
-    if (_loading) {
-      return const Scaffold(
-        backgroundColor: Color(0xFFF6F8FB),
-        body: Center(
-          child: CircularProgressIndicator(color: Color(0xFF37B7A5)),
+  Future<void> _showAddReminderSheet(BuildContext context) async {
+    final form = GlobalKey<FormState>();
+    final name = TextEditingController();
+    final dosage = TextEditingController();
+    final notes = TextEditingController();
+    String repeat = 'daily';
+    String timezone = 'SAST';
+    TimeOfDay time = const TimeOfDay(hour: 9, minute: 0);
+
+    Future<void> pickTime() async {
+      final picked = await showTimePicker(
+        context: context,
+        initialTime: time,
+        builder: (context, child) => MediaQuery(
+          data:
+              MediaQuery.of(context).copyWith(alwaysUse24HourFormat: true),
+          child: child ?? const SizedBox.shrink(),
         ),
       );
+      if (picked != null) {
+        setState(() => time = picked);
+      }
     }
 
-    final p = _profile ?? {};
-
-    return Scaffold(
-      extendBodyBehindAppBar: true,
-      backgroundColor: const Color(0xFFF6F8FB),
-      appBar: AppBar(
-        backgroundColor: Colors.transparent,
-        elevation: 0,
-        title: const Text(
-          "Profile",
-          style: TextStyle(
-              color: Color(0xFF0F172A), fontWeight: FontWeight.w900),
-        ),
-        centerTitle: true,
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.edit_rounded, color: Color(0xFF334155)),
-            onPressed: _openEditModal,
-          ),
-        ],
-      ),
-      body: Stack(
-        children: [
-          _AnimatedGradientBackground(),
-          SingleChildScrollView(
-            physics: const BouncingScrollPhysics(),
-            padding: const EdgeInsets.only(top: 120, bottom: 100),
+    await showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      showDragHandle: true,
+      backgroundColor: Theme.of(context).colorScheme.surface,
+      builder: (ctx) {
+        final bottom = MediaQuery.of(ctx).viewInsets.bottom;
+        return Padding(
+          padding: EdgeInsets.fromLTRB(16, 12, 16, bottom + 16),
+          child: Form(
+            key: form,
             child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                _buildHeader(p),
-                const SizedBox(height: 20),
-                _buildBasicStats(p),
-                const SizedBox(height: 20),
-                _buildHealthSection(),
-                const SizedBox(height: 20),
-                _buildMedicationSection(),
-              ],
-            ),
-          ),
-        ],
-      ),
-      bottomNavigationBar: _buildAccountNavBar(),
-    );
-  }
-
-  Widget _buildHeader(Map<String, dynamic> p) {
-    return Column(
-      children: [
-        CircleAvatar(
-          radius: 55,
-          backgroundColor: Colors.white,
-          backgroundImage: _auth.currentUser?.photoURL != null
-              ? NetworkImage(_auth.currentUser!.photoURL!)
-              : const NetworkImage(
-                  "https://cdn-icons-png.flaticon.com/512/847/847969.png"),
-        ),
-        const SizedBox(height: 12),
-        Text(
-          p['name'] ?? _auth.currentUser?.displayName ?? 'User',
-          style: const TextStyle(
-              fontSize: 24, fontWeight: FontWeight.w900, color: Colors.black87),
-        ),
-        const SizedBox(height: 4),
-        Text(
-          "${p['gender'] ?? 'N/A'} • ${p['age'] ?? '--'} yrs",
-          style: const TextStyle(color: Color(0xFF64748B), fontSize: 14),
-        ),
-      ],
-    ).animate().fadeIn(duration: 500.ms).slideY(begin: 0.2);
-  }
-
-  Widget _buildBasicStats(Map<String, dynamic> p) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 20),
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(22),
-        child: BackdropFilter(
-          filter: ImageFilter.blur(sigmaX: 16, sigmaY: 16),
-          child: Container(
-            padding: const EdgeInsets.all(18),
-            decoration: BoxDecoration(
-              color: Colors.white.withOpacity(0.7),
-              borderRadius: BorderRadius.circular(22),
-              boxShadow: const [
-                BoxShadow(
-                    color: Color(0x22000000),
-                    blurRadius: 18,
-                    offset: Offset(0, 6))
-              ],
-            ),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceAround,
-              children: [
-                _infoTile(Icons.bloodtype, p['bloodType'] ?? "N/A", "Blood Type"),
-                _infoTile(Icons.wc, p['gender'] ?? "N/A", "Gender"),
-                _infoTile(Icons.calendar_today,
-                    "${p['age'] ?? '--'}", "Age"),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildHealthSection() {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 20),
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(20),
-        child: BackdropFilter(
-          filter: ImageFilter.blur(sigmaX: 18, sigmaY: 18),
-          child: Container(
-            width: double.infinity,
-            padding: const EdgeInsets.all(18),
-            decoration: BoxDecoration(
-              color: Colors.white.withOpacity(0.65),
-              borderRadius: BorderRadius.circular(20),
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Text("Health Information",
-                    style: TextStyle(
-                        fontWeight: FontWeight.w900,
-                        fontSize: 18,
-                        color: Color(0xFF0F172A))),
-                const SizedBox(height: 10),
-                _infoRow("Disabilities",
-                    _disabilities.isEmpty ? "None" : _disabilities.join(', ')),
-                _infoRow("Allergies",
-                    _allergies.isEmpty ? "None" : _allergies.join(', ')),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildMedicationSection() {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 20),
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(20),
-        child: BackdropFilter(
-          filter: ImageFilter.blur(sigmaX: 18, sigmaY: 18),
-          child: Container(
-            padding: const EdgeInsets.all(18),
-            decoration: BoxDecoration(
-              color: Colors.white.withOpacity(0.7),
-              borderRadius: BorderRadius.circular(20),
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Row(
+                Text('Add medication reminder',
+                    style: Theme.of(ctx).textTheme.titleMedium),
+                const SizedBox(height: 12),
+                TextFormField(
+                  controller: name,
+                  decoration: const InputDecoration(
+                    labelText: 'Medication name',
+                    prefixIcon: Icon(Icons.medication_outlined),
+                  ),
+                  validator: (v) =>
+                      (v == null || v.trim().isEmpty) ? 'Required' : null,
+                ),
+                const SizedBox(height: 8),
+                TextFormField(
+                  controller: dosage,
+                  decoration: const InputDecoration(
+                    labelText: 'Dosage (optional)',
+                    prefixIcon: Icon(Icons.numbers),
+                  ),
+                ),
+                const SizedBox(height: 8),
+                TextFormField(
+                  controller: notes,
+                  decoration: const InputDecoration(
+                    labelText: 'Instructions / notes (optional)',
+                    prefixIcon: Icon(Icons.notes_outlined),
+                  ),
+                  maxLines: 2,
+                ),
+                const SizedBox(height: 8),
+                Row(
                   children: [
-                    Icon(Icons.medication_liquid_rounded,
-                        color: Color(0xFF3B82F6)),
-                    SizedBox(width: 10),
-                    Text(
-                      "Medication Reminders",
-                      style: TextStyle(
-                          fontWeight: FontWeight.w900,
-                          fontSize: 18,
-                          color: Color(0xFF0F172A)),
+                    Expanded(
+                      child: DropdownButtonFormField<String>(
+                        initialValue: repeat,
+                        items: const [
+                          DropdownMenuItem(
+                              value: 'daily', child: Text('Daily')),
+                          DropdownMenuItem(
+                              value: 'weekly', child: Text('Weekly')),
+                          DropdownMenuItem(
+                              value: 'everyNHours',
+                              child: Text('Every N Hours')),
+                          DropdownMenuItem(
+                              value: 'everyN', child: Text('Every N Days')),
+                        ],
+                        onChanged: (v) => repeat = v ?? 'daily',
+                        decoration: const InputDecoration(
+                          labelText: 'Repeat',
+                          prefixIcon: Icon(Icons.repeat),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: InkWell(
+                        onTap: pickTime,
+                        borderRadius: BorderRadius.circular(12),
+                        child: InputDecorator(
+                          decoration: const InputDecoration(
+                            labelText: 'Time',
+                            prefixIcon: Icon(Icons.schedule),
+                          ),
+                          child: Text(
+                            '${time.hour.toString().padLeft(2, '0')}:${time.minute.toString().padLeft(2, '0')}',
+                          ),
+                        ),
+                      ),
                     ),
                   ],
                 ),
-                const SizedBox(height: 12),
-                if (_reminders.isEmpty)
-                  const Text("No medication reminders yet.",
-                      style: TextStyle(color: Color(0xFF64748B)))
-                else
-                  Column(
-                    children: _reminders
-                        .map(
-                          (r) => ListTile(
-                            leading: const Icon(Icons.alarm_rounded,
-                                color: Color(0xFF3B82F6)),
-                            title: Text(
-                              r["name"],
-                              style: const TextStyle(fontWeight: FontWeight.w700),
-                            ),
-                            subtitle: Text(
-                              "${r["repeat"]} • ${r["time"]}",
-                              style: const TextStyle(
-                                  color: Color(0xFF64748B), fontSize: 13),
-                            ),
-                            trailing: IconButton(
-                              icon: const Icon(Icons.delete_outline,
-                                  color: Colors.redAccent),
-                              onPressed: () => _removeMedication(r["name"]),
-                            ),
-                          ).animate().fadeIn(duration: 400.ms),
-                        )
-                        .toList(),
+                const SizedBox(height: 8),
+                TextFormField(
+                  initialValue: timezone,
+                  decoration: const InputDecoration(
+                    labelText: 'Timezone',
+                    prefixIcon: Icon(Icons.public),
                   ),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _infoTile(IconData icon, String value, String label) {
-    return Column(
-      children: [
-        CircleAvatar(
-          radius: 22,
-          backgroundColor: const Color(0xFF37B7A5).withOpacity(0.1),
-          child: Icon(icon, color: const Color(0xFF37B7A5)),
-        ),
-        const SizedBox(height: 8),
-        Text(value,
-            style: const TextStyle(
-                fontWeight: FontWeight.w900, color: Color(0xFF0F172A))),
-        Text(label,
-            style: const TextStyle(color: Color(0xFF64748B), fontSize: 12)),
-      ],
-    );
-  }
-
-  Widget _infoRow(String label, String value) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 6),
-      child: Row(
-        children: [
-          Icon(Icons.info_outline, color: const Color(0xFF3B82F6)),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Text(
-              "$label: $value",
-              style: const TextStyle(
-                  color: Color(0xFF0F172A),
-                  fontWeight: FontWeight.w600,
-                  fontSize: 14),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildAccountNavBar() {
-    final items = [
-      {"icon": Icons.person_rounded, "label": "Profile"},
-      {"icon": Icons.chat_bubble_outline_rounded, "label": "Past Chats"},
-      {"icon": Icons.settings_rounded, "label": "Settings"},
-    ];
-
-    return ClipRRect(
-      borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
-      child: BackdropFilter(
-        filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
-        child: BottomNavigationBar(
-          currentIndex: _currentTab,
-          onTap: (i) {
-            setState(() => _currentTab = i);
-            // TODO: Implement routing if needed
-          },
-          backgroundColor: Colors.white.withOpacity(0.8),
-          selectedItemColor: const Color(0xFF37B7A5),
-          unselectedItemColor: const Color(0xFF94A3B8),
-          items: items
-              .map(
-                (item) => BottomNavigationBarItem(
-                  icon: Icon(item["icon"] as IconData),
-                  label: item["label"] as String,
+                  onChanged: (v) => timezone = v.trim().isEmpty ? 'SAST' : v,
                 ),
-              )
-              .toList(),
-        ),
-      ),
-    );
-  }
-}
-
-class _AnimatedGradientBackground extends StatefulWidget {
-  @override
-  State<_AnimatedGradientBackground> createState() =>
-      _AnimatedGradientBackgroundState();
-}
-
-class _AnimatedGradientBackgroundState
-    extends State<_AnimatedGradientBackground>
-    with SingleTickerProviderStateMixin {
-  late AnimationController _c;
-
-  @override
-  void initState() {
-    super.initState();
-    _c = AnimationController(vsync: this, duration: const Duration(seconds: 10))
-      ..repeat(reverse: true);
-  }
-
-  @override
-  void dispose() {
-    _c.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return AnimatedBuilder(
-      animation: _c,
-      builder: (context, _) {
-        final t = _c.value;
-        return Container(
-          decoration: BoxDecoration(
-            gradient: LinearGradient(
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-              colors: [
-                Color.lerp(const Color(0xFFA5F0E6), const Color(0xFFB9E9FF), t)!,
-                Color.lerp(const Color(0xFFB9E9FF), const Color(0xFFA5F0E6), t)!,
+                const SizedBox(height: 16),
+                FilledButton.icon(
+                  icon: const Icon(Icons.save),
+                  label: const Text('Save reminder'),
+                  onPressed: () async {
+                    if (!form.currentState!.validate()) return;
+                    final hh =
+                        time.hour.toString().padLeft(2, '0');
+                    final mm =
+                        time.minute.toString().padLeft(2, '0');
+                    final hhmm = '$hh:$mm';
+                    try {
+                      await _repo.createReminderManual(
+                        uid: _uid,
+                        name: name.text.trim(),
+                        dosage: dosage.text.trim().isEmpty
+                            ? null
+                            : dosage.text.trim(),
+                        instructions: notes.text.trim().isEmpty
+                            ? null
+                            : notes.text.trim(),
+                        repeat: repeat,
+                        timeHHmm: hhmm,
+                        timezone: timezone,
+                        active: true,
+                      );
+                      if (mounted) Navigator.pop(ctx);
+                      if (mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(
+                              content: Text('Reminder added')),
+                        );
+                      }
+                    } catch (e, st) {
+                      log.logE('Create reminder failed', e, st);
+                      if (mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(
+                              content:
+                                  Text('Could not create reminder')),
+                        );
+                      }
+                    }
+                  },
+                ),
               ],
             ),
           ),
         );
       },
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_uid.isEmpty) {
+      return const Center(child: Text('Not signed in'));
+    }
+
+    return Scaffold(
+
+      body: StreamBuilder<SympliUser?>(
+        stream: _repo.userStream(_uid),
+        builder: (context, userSnap) {
+          if (userSnap.connectionState == ConnectionState.waiting) {
+            return const Center(child: CircularProgressIndicator());
+          }
+          final user = userSnap.data;
+          if (user == null) {
+            return const Center(child: Text('User not found'));
+          }
+
+          final age = (user.profile?['age'] as num?)?.toInt();
+          final allergies =
+              (user.profile?['allergies'] as List?)?.cast<String>() ?? const [];
+          final conditions =
+              (user.profile?['conditions'] as List?)?.cast<String>() ?? const [];
+          final meds = user.medications?.cast<String>() ?? const [];
+
+          return CustomScrollView(
+            slivers: [
+              SliverToBoxAdapter(
+                child: Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      Card(
+                        elevation: 1,
+                        shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(16)),
+                        child: Padding(
+                          padding: const EdgeInsets.all(16),
+                          child: Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              CircleAvatar(
+                                radius: 28,
+                                child: Text(
+                                  (user.username ?? 'U')
+                                      .substring(0, 1)
+                                      .toUpperCase(),
+                                ),
+                              ),
+                              const SizedBox(width: 16),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      user.username ?? '—',
+                                      style: Theme.of(context)
+                                          .textTheme
+                                          .titleLarge,
+                                    ),
+                                    const SizedBox(height: 4),
+                                    Text(user.email ?? '',
+                                        style: Theme.of(context)
+                                            .textTheme
+                                            .bodyMedium),
+                                    const SizedBox(height: 12),
+                                    Wrap(
+                                      spacing: 12,
+                                      runSpacing: 8,
+                                      children: [
+                                        _chip(context, 'UID', user.uid),
+                                        if (age != null)
+                                          _chip(context, 'Age', '$age'),
+                                        _chip(
+                                          context,
+                                          'Onboarding',
+                                          '${user.onboardingComplete ?? false}',
+                                        ),
+                                      ],
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+
+                      const SizedBox(height: 12),
+                      Card(
+                        elevation: 1,
+                        shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(16)),
+                        child: Padding(
+                          padding: const EdgeInsets.all(16),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text('Health profile',
+                                  style: Theme.of(context)
+                                      .textTheme
+                                      .titleMedium),
+                              const SizedBox(height: 8),
+                              if (allergies.isNotEmpty)
+                                _kvRow('Allergies', allergies.join(', ')),
+                              if (conditions.isNotEmpty)
+                                _kvRow('Conditions', conditions.join(', ')),
+                              if (meds.isNotEmpty)
+                                _kvRow('Medications', meds.join(', ')),
+                            ],
+                          ),
+                        ),
+                      ),
+                        Align(
+                          alignment: Alignment.centerRight,
+                          child: FilledButton.icon(
+                            icon: const Icon(Icons.add),
+                            label: const Text('Add Reminder'),
+                            onPressed: () => _showAddReminderSheet(context),
+                          ),
+                        ),
+                        const SizedBox(height: 12),
+
+                      const SizedBox(height: 16),
+                      Text('Medication reminders',
+                          style: Theme.of(context).textTheme.titleMedium),
+                      const SizedBox(height: 8),
+                      MedicationReminderList(
+                        uid: _uid,
+                        repo: _repo,
+                        onEditTime: (r) => _pickNewTime(context, r),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+  }
+
+  Widget _chip(BuildContext context, String k, String v) {
+    return Chip(
+      label: Text('$k: $v'),
+      padding: const EdgeInsets.symmetric(horizontal: 8),
+    );
+  }
+
+  Widget _kvRow(String k, String v) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 6),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SizedBox(
+            width: 120,
+            child: Text(k, style: const TextStyle(fontWeight: FontWeight.w600)),
+          ),
+          Expanded(child: Text(v)),
+        ],
+      ),
+    );
+  }
+
+  Widget _scheduleList(BuildContext context, Map<String, dynamic> schedules) {
+    final entries = schedules.entries.toList();
+    if (entries.isEmpty) return const Text('—');
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: entries.map((e) {
+        final m = (e.value as Map?) ?? {};
+        final repeat = m['repeat'] ?? '—';
+        final time = m['time'] ?? '—';
+        final tz = m['timezone'] ?? '';
+        return Padding(
+          padding: const EdgeInsets.symmetric(vertical: 2),
+          child: Text('• ${e.key} → $repeat at $time $tz'),
+        );
+      }).toList(),
     );
   }
 }

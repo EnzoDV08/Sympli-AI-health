@@ -8,6 +8,7 @@ import 'package:sympli_ai_health/app/features/meds/services/med_reminder_service
 import 'package:sympli_ai_health/firebase_options.dart';
 import 'package:sympli_ai_health/app/services/router.dart';
 import 'package:go_router/go_router.dart';
+import 'package:sympli_ai_health/app/utils/logging.dart';
 
 final GlobalKey<NavigatorState> _navKey = GlobalKey<NavigatorState>();
 
@@ -39,14 +40,18 @@ Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
   await dotenv.load(fileName: ".env");
+  logI("dotenv loaded", name: "MAIN");
   await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
+  logI("Firebase initialized", name: "MAIN");
+
   await _initNotifs();
+  logI("Local notifications initialized", name: "MAIN");
 
   final openAiKey = dotenv.env['OPENAI_API_KEY'];
   if (openAiKey == null || openAiKey.isEmpty) {
-    print("OpenAI API Key not loaded!");
+    logW("OpenAI API Key not loaded", name: "MAIN");
   } else {
-    print("OpenAI API Key loaded (${openAiKey.substring(0, 8)}...)");
+    logI("OpenAI API Key loaded (${openAiKey.substring(0, 8)}...)", name: "MAIN");
   }
 
   runApp(const ProviderScope(child: MyApp()));
@@ -59,18 +64,14 @@ class MyApp extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final router = ref.watch(routerProvider);
 
-    return MaterialApp.router(
-      title: 'Sympli AI Health',
-      debugShowCheckedModeBanner: false,
-      theme: ThemeData(
-        colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xFF37B7A5)),
-        useMaterial3: true,
-      ),
-      routerConfig: router,
-      builder: (context, child) => Navigator(
-        key: _navKey,
-        onGenerateRoute: (_) => MaterialPageRoute(builder: (_) => child!),
-      ),
-    );
+return MaterialApp.router(
+  title: 'Sympli AI Health',
+  debugShowCheckedModeBanner: false,
+  theme: ThemeData(
+    colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xFF37B7A5)),
+    useMaterial3: true,
+  ),
+  routerConfig: router, 
+);
   }
 }

@@ -7,7 +7,7 @@ class DiagnosisLog {
   String description;
   String aiResponse;
   DateTime loggedAt;
-  DateTime nextCheckIn;
+  DateTime nextCheckIn; 
   String severity;
   List<String> symptoms;
   String medication;
@@ -21,13 +21,12 @@ class DiagnosisLog {
     required this.aiResponse,
     required this.loggedAt,
     required this.nextCheckIn,
-    this.severity = 'Mild',
+    this.severity = 'Unknown',
     this.symptoms = const [],
-    this.medication = 'None specified',
+    this.medication = 'None',
     this.note = '',
   });
 
-  /// ✅ Convert DiagnosisLog object to Firestore map
   Map<String, dynamic> toMap() {
     return {
       'userId': userId,
@@ -43,38 +42,38 @@ class DiagnosisLog {
     };
   }
 
-  /// ✅ Build model from Firestore map
   factory DiagnosisLog.fromMap(String id, Map<String, dynamic> map) {
+    DateTime parseTimestamp(dynamic value, {Duration? fallbackOffset}) {
+      if (value is Timestamp) {
+        return value.toDate();
+      }
+      return DateTime.now().add(fallbackOffset ?? Duration.zero);
+    }
+
     return DiagnosisLog(
       id: id,
       userId: map['userId'] ?? '',
-      title: map['title'] ?? '',
+      title: map['title'] ?? 'No Title',
       description: map['description'] ?? '',
       aiResponse: map['aiResponse'] ?? '',
-      loggedAt: (map['loggedAt'] as Timestamp?)?.toDate() ?? DateTime.now(),
-      nextCheckIn: (map['nextCheckIn'] as Timestamp?)?.toDate() ??
-          DateTime.now().add(const Duration(days: 2)),
-      severity: map['severity'] ?? 'Mild',
+      loggedAt: parseTimestamp(map['loggedAt']),
+      nextCheckIn: parseTimestamp(map['nextCheckIn'], fallbackOffset: const Duration(days: 1)),
+      severity: map['severity'] ?? 'Unknown',
       symptoms: List<String>.from(map['symptoms'] ?? []),
-      medication: map['medication'] ?? 'None specified',
+      medication: map['medication'] ?? 'None',
       note: map['note'] ?? '',
     );
   }
 
-  /// ✅ Fallback when Firestore data is incomplete or parsing fails
   factory DiagnosisLog.empty() {
     return DiagnosisLog(
       id: '',
       userId: '',
-      title: 'Unknown',
+      title: 'Empty Log',
       description: '',
       aiResponse: '',
       loggedAt: DateTime.now(),
-      nextCheckIn: DateTime.now().add(const Duration(days: 2)),
-      severity: 'Mild',
-      symptoms: const [],
-      medication: 'None specified',
-      note: '',
+      nextCheckIn: DateTime.now().add(const Duration(days: 1)),
     );
   }
 }

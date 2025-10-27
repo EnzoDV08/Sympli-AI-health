@@ -1,0 +1,13 @@
+{
+  "type": "service_account",
+  "project_id": "sympli-ai-speech",
+  "private_key_id": "a94d26a0ec5fc889ea874bc93bace848526e38f3",
+  "private_key": "-----BEGIN PRIVATE KEY-----\nMIIEvwIBADANBgkqhkiG9w0BAQEFAASCBKkwggSlAgEAAoIBAQC0tOHhMGJE6fl0\nWWLVCJOoaxrXlfmFNEqyaSjKahs2CZcO268fXYGGNvw1HYK16VsZ1JyQuLVC5hbA\ntWT5YsNYuoeMnYORjOGNcQMq9+noqljn2ihZWqmA8NZ6iAPWHUBznDECG6vZn50F\ncQG4UlA+pg+H/rmGn4GEfi6GnEd0FN+WxGbfrKGtglwycKXDaPx7mUkany+g53sv\nhF9/oYK3AT/9AO+LxQotDDoj0lxU8qKTRcg9AuySGbVf9EPVh7x/gTaH3oH5Qyzo\nToIhNNLUwAV2Rd4G/GvxsU56/1kyEUhG7ibh49+BMAdlE8ETmfOW4Y64Itb64izC\nIhNOdI73AgMBAAECggEAUZtocNZ1YpLZhWpCoFt1t3bbEeYYX8gMPcMQ2UyOyloN\nXnfmf78uGcsmHeScXYOrkSA7rn3D2hjnyJKCrb8k4iKmyWFvA+HAEKyrVhHMkDax\n3M7gLu4rI2BgM8jOFrlyHGO6nC2b77VN56Gvuapus8QxumRWK45IIuoLH95exHRQ\nT0GGRp7Q82DHk5RbkvYLaMsINtnRmGTxpRKDxexjEZ069OcjXQOk97H3JPkXp0J9\nlJ84Si8cokDStPpaPTrgq793cxgKM+P/UYVIWdh6bwhutLgWPqyZh0T9e+kuKU32\nJKRHgs/Aj/CxfjAZ7hJG7JjJzW3/ZyaoIsedZf5ZAQKBgQDgSgBGZm/Z2Pb3z3xs\n95d5N2eFTnS/tOnKHf6orvOn4m8bMlcArvCd0L8vVQ4cCaDrqAsyZlg6uA0JvTfX\n2fpSPsHz/4yni/ga/U/t2IUff4TP29fIb+8jqakjIavcnG2h4dnut7W1wJD8DbWB\nKMBDs+JlKCF/HgBMluR5+e+TAQKBgQDOQXDY+EY7644R0WgTAMQvSt49PWuCVueo\nAxj9NOs0/X1o622NPbksMtxnO/mt1/UQoMHEeEGnmmJLPKBKi+6EYerbWrgA1zla\niT5fJdwiwyF/BTUqXUKszf5Ybo9EqzpPdvnPhS+BQDb1hOmFdqzAhoM59d2R0q8Q\npGhJsRK59wKBgQClNLzpHjELJK4dMJ604NaY+b9tyLFkOAzwzJE0jNF6euZeAQFm\nxnUDuavpYFwpOMpoann84LfiYIlyAAcvHictB37zi+t9yjKxJp8GUbMU1Wftd0CF\nKjXabfDgqL+fmzWBxQsys+zLeJESp8Jm5a5g8BI1co7hxCZyQ779PaVDAQKBgQC9\nezMfsJ5dR95hkh5pbsfMppwaaIWO3SW+nPHlFCuMp+ABdl9TZUPrTeJbWKbcxUvW\n9chtJQkz30mz0sNzGLCLn6Tx1Zq68v42pWTOZmqg6OCp32/jNoAdXrTuKsuliyRr\ngmKm+bUVqZeT4IHj4Y185VZC9hOSdpnr0Q4ZvPn2KwKBgQC1/Ks6X/3sLw1LGIcK\nOrECOGQu7lClLn0LkyQFLjP7E56jUoLfbQMVzMdErX3RtI8G6eX0ZsRJNvBA2gnX\neI71RfLixqtrSKDlyDsUqEup1URh55GxjJNpXd/NkMq6TOcudgYUP/60W7tIsL11\nVI1b+ZjNtraSsr0JwxyE5sruYQ==\n-----END PRIVATE KEY-----\n",
+  "client_email": "sympli-ai-speech-service-453@sympli-ai-speech.iam.gserviceaccount.com",
+  "client_id": "106729121166227866243",
+  "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+  "token_uri": "https://oauth2.googleapis.com/token",
+  "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs",
+  "client_x509_cert_url": "https://www.googleapis.com/robot/v1/metadata/x509/sympli-ai-speech-service-453%40sympli-ai-speech.iam.gserviceaccount.com",
+  "universe_domain": "googleapis.com"
+}

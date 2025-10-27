@@ -1,9 +1,9 @@
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 
-class TriageSection extends StatelessWidget {
+class QuickAskSection extends StatelessWidget {
   final void Function(String label)? onSelect;
-  const TriageSection({super.key, this.onSelect});
+  const QuickAskSection({super.key, this.onSelect});
 
   @override
   Widget build(BuildContext context) {
@@ -12,11 +12,14 @@ class TriageSection extends StatelessWidget {
       children: [
         Row(
           children: const [
-            Icon(CupertinoIcons.question_circle_fill,
-                color: Color(0xFF5C8CFF), size: 18),
+            Icon(
+              CupertinoIcons.question_circle_fill,
+              color: Color(0xFF5C8CFF),
+              size: 18,
+            ),
             SizedBox(width: 6),
             Text(
-              "Triage Question",
+              "Quick Ask 💬",
               style: TextStyle(
                 color: Color(0xFF3B5FFF),
                 fontSize: 18,
@@ -31,19 +34,19 @@ class TriageSection extends StatelessWidget {
           child: ListView(
             scrollDirection: Axis.horizontal,
             children: [
-              _TriageChip(
+              _QuickAskChip(
                 label: "Medication",
                 asset: 'assets/icons/ic_medication.png',
                 bgColor: Color(0xFFFFC043),
                 onTap: onSelect,
               ),
-              _TriageChip(
+              _QuickAskChip(
                 label: "Symptom",
                 asset: 'assets/icons/ic_symptom.png',
                 bgColor: Color(0xFFFF6F61),
                 onTap: onSelect,
               ),
-              _TriageChip(
+              _QuickAskChip(
                 label: "AI Help",
                 asset: 'assets/icons/ic_aihelp.png',
                 bgColor: Color(0xFF52E3C2),
@@ -57,13 +60,13 @@ class TriageSection extends StatelessWidget {
   }
 }
 
-class _TriageChip extends StatelessWidget {
+class _QuickAskChip extends StatelessWidget {
   final String label;
   final String asset;
   final Color bgColor;
   final void Function(String label)? onTap;
 
-  const _TriageChip({
+  const _QuickAskChip({
     required this.label,
     required this.asset,
     required this.bgColor,
@@ -80,7 +83,7 @@ class _TriageChip extends StatelessWidget {
         decoration: BoxDecoration(
           color: Colors.white,
           borderRadius: BorderRadius.circular(28),
-          border: Border.all(color: const Color(0xFFE5E7EB), width: 1.2), 
+          border: Border.all(color: const Color(0xFFE5E7EB), width: 1.2),
         ),
         child: Row(
           mainAxisSize: MainAxisSize.min,

@@ -83,7 +83,7 @@ class _EditProfileModalState extends State<EditProfileModal> {
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
-        backgroundColor: Colors.white.withOpacity(0.9),
+        backgroundColor: Colors.white.withValues(alpha: 0.9),
         title: const Text("Add Condition"),
         content: TextField(
           controller: controller,
@@ -121,7 +121,7 @@ class _EditProfileModalState extends State<EditProfileModal> {
       child: BackdropFilter(
         filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
         child: Container(
-          color: Colors.white.withOpacity(0.9),
+          color: Colors.white.withValues(alpha: 0.9),
           padding: EdgeInsets.only(
             left: 24,
             right: 24,
@@ -226,7 +226,6 @@ class _EditProfileModalState extends State<EditProfileModal> {
 
                 const SizedBox(height: 30),
 
-                // 💾 Save button
                 Center(
                   child: ElevatedButton.icon(
                     onPressed: _saving ? null : _save,

@@ -3,8 +3,9 @@ import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:sympli_ai_health/app/core/widgets/ask_bar.dart';
-import 'package:sympli_ai_health/app/core/widgets/triage_section.dart';
-import 'package:sympli_ai_health/app/core/widgets/reminder_widget.dart';
+import 'package:sympli_ai_health/app/core/widgets/quick_ask_section.dart';
+import 'package:sympli_ai_health/app/features/home/widgets/medication_reminder_widget.dart';
+import 'package:go_router/go_router.dart';
 
 const _kHeaderBg = 'assets/images/header_bg_grain.png';
 
@@ -26,7 +27,6 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 }
-
 
 class _HomeTab extends StatelessWidget {
   const _HomeTab();
@@ -54,12 +54,18 @@ class _HomeTab extends StatelessWidget {
 
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 16),
-              child: TriageSection(
+              child: QuickAskSection(
                 onSelect: (label) {
-                  debugPrint("User selected triage: $label");
+                  debugPrint("Quick Ask selected: $label");
+                  context.pushNamed(
+                    'chat-ai',
+                    extra: {'followUpCondition': label},
+                  );
                 },
               ),
             ),
+
+
 
             const SizedBox(height: 12),
 
@@ -85,26 +91,7 @@ class _HomeTab extends StatelessWidget {
                 ],
               ),
             ),
-
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              child: Column(
-                children: const [
-                  ReminderWidget(
-                    time: "10:45 am",
-                    title: "Take your medicine in 1H 15M",
-                    subtitle: "Remember to take your antibiotics with water.",
-                  ),
-                  SizedBox(height: 12),
-                  ReminderWidget(
-                    time: "4:00 pm",
-                    title: "Drink a glass of water",
-                    subtitle: "Hydration reminder from Sympli AI.",
-                    color: Color(0xFF52E3C2),
-                  ),
-                ],
-              ),
-            ),
+          const MedicationReminderWidget(),
           ],
         ),
       ),
@@ -274,7 +261,7 @@ class _HeaderBackground extends StatelessWidget {
           alignment: Alignment.topCenter,
         ),
       ),
-      child: Container(color: Colors.black.withOpacity(0.02)),
+      child: Container(color: Colors.black.withValues(alpha: 0.02)),
     );
   }
 }
@@ -349,7 +336,7 @@ class _UserAvatar extends StatelessWidget {
       padding: const EdgeInsets.all(2),
       decoration: BoxDecoration(
         shape: BoxShape.circle,
-        color: Colors.white.withOpacity(.25),
+        color: Colors.white.withValues(alpha: .25),
       ),
       child: CircleAvatar(
         radius: radius,

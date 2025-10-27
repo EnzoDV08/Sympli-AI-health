@@ -36,8 +36,6 @@ class _SignUpFormState extends State<SignUpForm> {
   static const blue = Color(0xFF3B82F6);
   static const green = Color(0xFF10B981);
   static const red = Color(0xFFEF6A67);
-  static const pillColor = Color(0xFF293241);
-  static const hintColor = Color(0xFFB7C0CB);
 
   static final _emailRegex = RegExp(r'^[^\s@]+@[^\s@]+\.[^\s@]+$');
   static final _usernameRegex = RegExp(r'^[a-zA-Z0-9._-]{3,}$');
@@ -125,12 +123,12 @@ Future<void> _register() async {
   });
 
   try {
-    // ✅ Use your central AuthService to handle all creation logic
     final cred = await AuthService.instance.signUp(
       username: _username.text.trim(),
       email: _email.text.trim(),
       password: _password.text.trim(),
     );
+    debugPrint("✅ User signed up: ${cred.user?.uid}");
 
     if (!mounted) return;
 
@@ -138,10 +136,8 @@ Future<void> _register() async {
       const SnackBar(content: Text('Account created successfully!')),
     );
 
-    // ✅ Optional small delay to ensure AuthState updates properly
     await Future.delayed(const Duration(milliseconds: 800));
 
-    // Go to your next screen
     context.go('/intro');
   } on FirebaseAuthException catch (e) {
     String msg;

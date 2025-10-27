@@ -1,29 +1,59 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:sympli_ai_health/app/features/chat_ai/model/diagnosis_log.dart';
-import 'package:sympli_ai_health/app/features/meds/services/med_reminder_service.dart';
-
-String _extractSeverity(String aiReply) {
-  final lower = aiReply.toLowerCase();
-  if (lower.contains('mild')) return 'Mild';
-  if (lower.contains('moderate')) return 'Moderate';
-  if (lower.contains('severe') || lower.contains('serious')) return 'Severe';
-  return 'Unknown';
-}
-
-List<String> _extractSymptoms(String userMessage) {
-  final text = userMessage.toLowerCase();
-  final possible = [
-    'cough', 'fever', 'headache', 'pain', 'nausea', 'sore throat',
-    'fatigue', 'dizziness', 'rash', 'shortness of breath'
-  ];
-  return possible.where((s) => text.contains(s)).toList();
-}
+import 'package:sympli_ai_health/app/utils/logging.dart';
 
 class DiagnosisService {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   final FirebaseAuth _auth = FirebaseAuth.instance;
-  final _reminderService = medReminderService;
+
+  Future<String> saveMedicationReminder({
+    required Map<String, dynamic> medicationData,
+  }) async {
+    final user = _auth.currentUser;
+    if (user == null) {
+      logW("saveMedicationReminder aborted: user not logged in", name: "DIAG");
+      throw Exception("User not logged in");
+    }
+
+    try {
+      final int frequencyHours = (medicationData['frequency_hours'] is num)
+          ? (medicationData['frequency_hours'] as num).toInt()
+          : int.tryParse(medicationData['frequency_hours'].toString()) ?? 0;
+
+      final clean = <String, dynamic>{
+        'name': (medicationData['name'] ?? '').toString(),
+        'dosage': (medicationData['dosage'] ?? '').toString(),
+        'frequency_hours': frequencyHours,
+        'instructions': (medicationData['instructions'] ?? '').toString(),
+        'userId': user.uid,
+        'createdAt': FieldValue.serverTimestamp(),
+        'active': true,
+      };
+
+      final docRef = _firestore
+          .collection('users')
+          .doc(user.uid)
+          .collection('medication_reminders')
+          .doc(); 
+
+      clean['reminderId'] = docRef.id;
+
+      logI(
+        "Writing reminder → users/${user.uid}/medication_reminders/${docRef.id}",
+        name: "DIAG",
+      );
+      logD("data: $clean", name: "DIAG");
+
+      await docRef.set(clean);
+
+      logI("✅ reminder saved id=${docRef.id}", name: "DIAG");
+      return docRef.id;
+    } catch (e, st) {
+      logE("saveMedicationReminder failed", e, st, name: "DIAG");
+      rethrow;
+    }
+  }
 
   Future<void> saveDiagnosis({
     required String title,
@@ -31,7 +61,10 @@ class DiagnosisService {
     required String aiResponse,
   }) async {
     final user = _auth.currentUser;
-    if (user == null) throw Exception("User not logged in");
+    if (user == null) {
+      logW("saveDiagnosis aborted: user not logged in", name: "DIAG");
+      throw Exception("User not logged in");
+    }
 
     try {
       final logData = {
@@ -39,78 +72,69 @@ class DiagnosisService {
         'title': title,
         'description': description,
         'aiResponse': aiResponse,
-        'severity': _extractSeverity(aiResponse),
-        'symptoms': _extractSymptoms(description),
-        'medication': '',
-        'note': '',
         'loggedAt': FieldValue.serverTimestamp(),
-        'nextCheckIn': DateTime.now().add(const Duration(days: 1)),
-        'reminderSuggested': aiResponse.toLowerCase().contains('remind') ||
-                            aiResponse.toLowerCase().contains('check in'),
       };
 
+      logD("saveDiagnosis → users/${user.uid}/diagnosis_logs", name: "DIAG");
+      await _firestore
+          .collection('users')
+          .doc(user.uid)
+          .collection('diagnosis_logs')
+          .add(logData);
 
-      final docRef = await _firestore.collection('diagnosis_logs').add(logData);
-
-      final log = DiagnosisLog.fromMap(docRef.id, {
-        ...logData,
-        'loggedAt': Timestamp.now(),
-        'nextCheckIn': Timestamp.fromDate(
-          DateTime.now().add(const Duration(days: 1)),
-        ),
-      });
-
-
-      try {
-        await _reminderService.scheduleCheckIn(log);
-      } catch (e) {
-        print("⚠️ Reminder scheduling failed: $e");
-      }
-
-      print("✅ Diagnosis log saved successfully for ${user.email}");
-    } catch (e, stack) {
-      print("⚠️ Error saving diagnosis: $e");
-      print(stack);
+      logI("✅ diagnosis log saved", name: "DIAG");
+    } catch (e, st) {
+      logE("saveDiagnosis failed", e, st, name: "DIAG");
       rethrow;
     }
   }
 
   Stream<List<DiagnosisLog>> getUserLogs() {
     final uid = _auth.currentUser?.uid;
-    if (uid == null) return const Stream.empty();
-
-    try {
-      return _firestore
-          .collection('diagnosis_logs')
-          .where('userId', isEqualTo: uid)
-          .orderBy('loggedAt', descending: true)
-          .snapshots()
-          .map((snapshot) {
-        final logs = snapshot.docs.map((doc) {
-          try {
-            final data = doc.data() as Map<String, dynamic>;
-            return DiagnosisLog.fromMap(doc.id, data);
-          } catch (e) {
-            print("⚠️ Error parsing diagnosis log: $e");
-            return DiagnosisLog.empty();
-          }
-        }).toList();
-
-        print("📊 Loaded ${logs.length} logs for user $uid");
-        return logs;
-      });
-    } catch (e) {
-      print("⚠️ Firestore stream error: $e");
+    if (uid == null) {
+      logW("getUserLogs: no auth user; returning empty stream", name: "DIAG");
       return const Stream.empty();
     }
+
+    logD("getUserLogs → users/$uid/diagnosis_logs (live stream)", name: "DIAG");
+
+    return _firestore
+        .collection('users')
+        .doc(uid)
+        .collection('diagnosis_logs')
+        .orderBy('loggedAt', descending: true)
+        .snapshots()
+        .map((snapshot) {
+      logD("diagnosis_logs snapshot: ${snapshot.docs.length} docs", name: "DIAG");
+      return snapshot.docs.map((doc) {
+        try {
+          return DiagnosisLog.fromMap(doc.id, doc.data());
+        } catch (e, st) {
+          logE("parse DiagnosisLog failed (doc=${doc.id})", e, st, name: "DIAG");
+          return DiagnosisLog.empty();
+        }
+      }).toList();
+    });
   }
 
   Future<void> deleteLog(String logId) async {
+    final uid = _auth.currentUser?.uid;
+    if (uid == null) {
+      logW("deleteLog aborted: no auth user", name: "DIAG");
+      return;
+    }
+
     try {
-      await _firestore.collection('diagnosis_logs').doc(logId).delete();
-      print("🗑️ Log deleted: $logId");
-    } catch (e) {
-      print("⚠️ Failed to delete log: $e");
+      logD("deleteLog → users/$uid/diagnosis_logs/$logId", name: "DIAG");
+      await _firestore
+          .collection('users')
+          .doc(uid)
+          .collection('diagnosis_logs')
+          .doc(logId)
+          .delete();
+      logI("🗑️ Log deleted: $logId", name: "DIAG");
+    } catch (e, st) {
+      logE("Failed to delete log: $logId", e, st, name: "DIAG");
     }
   }
 }

@@ -17,7 +17,6 @@ class SympliNavBar extends StatelessWidget {
   Widget build(BuildContext context) {
     const darkBg = Color(0xFF2F3A4D);
     const inactive = Color(0xFF9AA7B8);
-    const active = Color(0xFF3B82F6);
 
     final currentPath = GoRouterState.of(context).uri.toString();
 
@@ -54,7 +53,7 @@ class SympliNavBar extends StatelessWidget {
                     ),
                     _NavItem(
                       icon: Icons.history_rounded,
-                      label: "Logs",
+                      label: "Chats",
                       active: currentPath == '/logs',
                       onTap: () => context.go('/logs'),
                     ),

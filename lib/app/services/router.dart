@@ -9,14 +9,14 @@ import 'package:sympli_ai_health/app/features/onboarding/health_intro_flow.dart'
 import 'package:sympli_ai_health/app/features/home/home_screen.dart';
 import 'package:sympli_ai_health/app/features/account/pages/account_screen.dart';
 import 'package:sympli_ai_health/app/features/account/pages/profile_screen.dart';
-import 'package:sympli_ai_health/app/features/account/pages/chat_history_screen.dart';
 import 'package:sympli_ai_health/app/features/account/pages/settings_screen.dart';
 import 'package:sympli_ai_health/app/features/chat_ai/pages/chat_ai_screen.dart';
 import 'package:sympli_ai_health/app/features/logs/pages/logs_screen.dart';
 
-
+final _rootNavigatorKey = GlobalKey<NavigatorState>();
 final routerProvider = Provider<GoRouter>((ref) {
   return GoRouter(
+    navigatorKey: _rootNavigatorKey, 
     initialLocation: '/splash',
     debugLogDiagnostics: true,
     routes: [
@@ -90,10 +90,6 @@ final routerProvider = Provider<GoRouter>((ref) {
                 builder: (context, state) => const ProfileScreen(),
               ),
               GoRoute(
-                path: 'chats',
-                builder: (context, state) => const ChatHistoryScreen(),
-              ),
-              GoRoute(
                 path: 'settings',
                 builder: (context, state) => const SettingsScreen(),
               ),
@@ -102,33 +98,50 @@ final routerProvider = Provider<GoRouter>((ref) {
         ],
       ),
 
-      GoRoute(
-        path: '/chat-ai',
-        pageBuilder: (context, state) => CustomTransitionPage(
-          key: state.pageKey,
-          child: const ChatAIScreen(),
-          transitionsBuilder: (context, animation, secondaryAnimation, child) {
-            const begin = Offset(0.0, 1.0);
-            const end = Offset.zero;
-            const curve = Curves.easeInOutCubic;
+ GoRoute(
+  name: 'chat-ai',
+  path: '/chat-ai',
+  parentNavigatorKey: _rootNavigatorKey,
+  pageBuilder: (context, state) {
+    final extra = state.extra;
+    String? chatId;
+    String? followUpCondition;
 
-            final tween =
-                Tween(begin: begin, end: end).chain(CurveTween(curve: curve));
-            final fadeTween =
-                Tween<double>(begin: 0.0, end: 1.0).chain(CurveTween(curve: Curves.easeOut));
+    if (extra is String) {
+      chatId = extra;
+    } else if (extra is Map<String, dynamic>) {
+      chatId = extra['chatId'] as String?;
+      followUpCondition = extra['followUpCondition'] as String?;
+    }
+          return CustomTransitionPage(
+            key: state.pageKey,
+            child: ChatAIScreen(
+              existingChatId: chatId,
+              followUpCondition: followUpCondition,
+            ),
+            transitionsBuilder: (context, animation, secondaryAnimation, child) {
+              const begin = Offset(0.0, 1.0);
+              const end = Offset.zero;
+              const curve = Curves.easeInOutCubic;
 
-            return SlideTransition(
-              position: animation.drive(tween),
-              child: FadeTransition(
-                opacity: animation.drive(fadeTween),
-                child: Container(
-                  color: Colors.white,
-                  child: child,
+              final tween = Tween(begin: begin, end: end)
+                  .chain(CurveTween(curve: curve));
+              final fadeTween = Tween<double>(begin: 0.0, end: 1.0)
+                  .chain(CurveTween(curve: Curves.easeOut));
+
+              return SlideTransition(
+                position: animation.drive(tween),
+                child: FadeTransition(
+                  opacity: animation.drive(fadeTween),
+                  child: Container(
+                    color: Colors.white,
+                    child: child,
+                  ),
                 ),
-              ),
-            );
-          },
-        ),
+              );
+            },
+          );
+        },
       ),
     ],
   );

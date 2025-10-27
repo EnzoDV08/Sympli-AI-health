@@ -48,6 +48,7 @@ dependencies:
   shimmer: ^3.0.0
   animated_text_kit: ^4.2.2
 
+  animate_do: ^3.1.2
 
 dev_dependencies:
   flutter_test:
@@ -62,6 +63,7 @@ flutter:
     - assets/images/
     - assets/icons/
     - assets/animations/
+    - assets/keys/google_speech_key.json
 
 flutter_native_splash:
   color: "#FFFFFF"

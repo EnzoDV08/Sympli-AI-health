@@ -5,6 +5,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:sympli_ai_health/app/features/meds/services/med_reminder_service.dart';
+import 'package:sympli_ai_health/app/utils/logging.dart' as log;
 
 class HealthIntroFlow extends StatefulWidget {
   const HealthIntroFlow({super.key});
@@ -23,6 +24,8 @@ class _HealthIntroFlowState extends State<HealthIntroFlow>
   final Set<String> _allergies = {};
   final Set<String> _meds = {};
   final Map<String, Map<String, dynamic>> _medPlans = {}; 
+  final _auth = FirebaseAuth.instance;
+  final _firestore = FirebaseFirestore.instance;
 
   bool _saving = false;
   bool _finishing = false;
@@ -65,44 +68,92 @@ class _HealthIntroFlowState extends State<HealthIntroFlow>
 
   double get _progress => (_index + (_validStep ? .8 : .2)) / 3.0;
 
-  Future<void> _finish() async {
-    if (!_validStep || _saving) return;
-    setState(() => _saving = true);
-    try {
-      final uid = FirebaseAuth.instance.currentUser?.uid;
-      if (uid == null) throw Exception('No user');
+Future<void> _saveMedicationReminder(String medName, String dosage, String time) async {
+  try {
+    final uid = _auth.currentUser?.uid;
+    if (uid == null) return;
 
-      await FirebaseFirestore.instance.collection('users').doc(uid).set({
-        'onboardingComplete': true,
-        'profile': {
-          'gender': _gender,
-          'age': int.tryParse(_ageRange ?? ''),
-          'conditions': _conditions.toList(),
-          'allergies': _allergies.toList(),
-          'medications': _meds.toList(),
-          'medicationSchedules': _medPlans.map((k, v) => MapEntry(k, {
-            'repeat': v['repeat'],       
-            'time': v['time'],            
-            if (v['n'] != null) 'n': v['n'],
-            if (v['days'] != null) 'days': (v['days'] as Set<int>? ?? (v['days'] as List?)?.cast<int>() ?? <int>[]).toList(),
-            'timezone': DateTime.now().timeZoneName,
-          })),
-        },
-        'updatedAt': FieldValue.serverTimestamp(),
-      }, SetOptions(merge: true));
+    final userRef = _firestore.collection('users').doc(uid);
+    await userRef.set({
+      'medications': FieldValue.arrayUnion([medName]),
+      'updatedAt': FieldValue.serverTimestamp(),
+    }, SetOptions(merge: true));
 
-      setState(() => _finishing = true);
-      await Future.delayed(const Duration(milliseconds: 950));
-      if (mounted) context.go('/home');
-    } catch (e) {
-      if (!mounted) return;
+    final reminderRef = userRef.collection('medication_reminders').doc();
+    final reminderData = {
+      'name': medName,
+      'dosage': dosage,
+      'plan': {
+        'repeat': 'daily',
+        'time': time,
+        'timezone': 'SAST',
+      },
+      'active': true,
+      'createdAt': FieldValue.serverTimestamp(),
+      'reminderId': reminderRef.id,
+      'userId': uid,
+    };
+
+    await reminderRef.set(reminderData);
+    log.logI('✅ Saved medication reminder for $medName');
+  } catch (e, st) {
+    log.logE('❌ Failed to save medication reminder', e, st);
+    if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Could not save: $e')),
+        SnackBar(content: Text('Failed to save $medName reminder: $e')),
       );
-    } finally {
-      if (mounted) setState(() => _saving = false);
     }
   }
+}
+
+Future<void> _finish() async {
+  if (!_validStep || _saving) return;
+  setState(() => _saving = true);
+  try {
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid == null) throw Exception('No user');
+
+    final userRef = FirebaseFirestore.instance.collection('users').doc(uid);
+
+    await userRef.set({
+      'onboardingComplete': true,
+      'profile': {
+        'gender': _gender,
+        'age': int.tryParse(_ageRange ?? ''),
+        'conditions': _conditions.toList(),
+        'allergies': _allergies.toList(),
+        'medications': _meds.toList(), 
+      },
+      'updatedAt': FieldValue.serverTimestamp(),
+    }, SetOptions(merge: true));
+
+    for (final med in _meds) {
+      await _saveMedicationReminder(med, '', '08:00');
+    }
+
+    log.logI('💊 Saved ${_meds.length} medication reminders for user $uid');
+
+    setState(() => _finishing = true);
+    await Future.delayed(const Duration(milliseconds: 950));
+
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Profile and medication reminders saved!')),
+      );
+      context.go('/home');
+    }
+
+    log.logI('✅ Onboarding completed successfully for $uid');
+  } catch (e, st) {
+    log.logE('❌ Failed onboarding save', e, st);
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('Could not save: $e')),
+    );
+  } finally {
+    if (mounted) setState(() => _saving = false);
+  }
+}
 
   @override
   Widget build(BuildContext context) {
@@ -884,17 +935,36 @@ class _StepAllergyMedsState extends State<_StepAllergyMeds> {
           await medReminderService.scheduleWeekly(
             baseId: baseId, title: title, body: body, timeOfDay: tod, weekdays: days.toSet(),
           );
-        } else if (repeat == 'everyN') {
-          final n = (result['n'] as num?)?.toInt() ?? 2;
-          await medReminderService.scheduleEveryNDays(
-            baseId: baseId, title: title, body: body, timeOfDay: tod, n: n, horizonDays: 180,
-          );
-        }
+        } else if (repeat == 'everyNHours') {
+        final hours = (result['hours'] as num?)?.toInt() ?? 6;
+        await medReminderService.scheduleEveryNHours(
+          baseId: baseId,
+          title: title,
+          body: body,
+          hours: hours,
+          horizonDays: 3,
+        );
+      }
 
         if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Reminder set: ${_planLabel(result)}')),
         );
+        final uid = FirebaseAuth.instance.currentUser?.uid;
+      if (uid != null) {
+        await medReminderService.createOrUpdateManualReminder(
+          uid: uid,
+          medName: med,
+          plan: ManualPlan(
+            repeat: result['repeat'] as String,
+            time: result['time'] as String,
+            n: (result['n'] as num?)?.toInt(),
+            days: (result['days'] as List?)?.cast<int>(),
+            timezone: DateTime.now().timeZoneName,
+          ),
+          alsoScheduleLocally: false,
+        );
+      }
       }
 
 
@@ -1044,6 +1114,24 @@ class _StepAllergyMedsState extends State<_StepAllergyMeds> {
                       onPressed: () async {
                         final baseId = med.hashCode & 0x7FFFFFFF;
                         await medReminderService.cancelAllFor(baseId);
+                        final uid = FirebaseAuth.instance.currentUser?.uid;
+                        if (uid != null) {
+                          final userRef = FirebaseFirestore.instance.collection('users').doc(uid);
+                          final q = await userRef
+                              .collection('medication_reminders')
+                              .where('name', isEqualTo: med)
+                              .get();
+                          for (final d in q.docs) {
+                            await d.reference.delete();
+                          }
+                          await userRef.set({
+                            'profile': {
+                              'medications': FieldValue.arrayRemove([med]),
+                            },
+                            'updatedAt': FieldValue.serverTimestamp(),
+                          }, SetOptions(merge: true));
+                        }
+
                         widget.medPlans.remove(med);
                         widget.meds.remove(med);
                         widget.onChanged();
