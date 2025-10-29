@@ -1,7 +1,10 @@
+import 'dart:io';
 import 'dart:ui';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:firebase_storage/firebase_storage.dart';
 import 'package:flutter/material.dart';
+import 'package:image_picker/image_picker.dart';
 
 class EditProfileModal extends StatefulWidget {
   const EditProfileModal({super.key});
@@ -13,15 +16,20 @@ class EditProfileModal extends StatefulWidget {
 class _EditProfileModalState extends State<EditProfileModal> {
   final _auth = FirebaseAuth.instance;
   final _firestore = FirebaseFirestore.instance;
+  final _storage = FirebaseStorage.instance;
 
   final _nameCtrl = TextEditingController();
   final _ageCtrl = TextEditingController();
 
+  String? _originalName;
+  bool _isNameEditing = false;
+
   String? _gender;
-  String? _bloodType;
   final Set<String> _conditions = {};
+  String? _profileImageUrl;
 
   bool _saving = false;
+  bool _uploading = false;
 
   @override
   void initState() {
@@ -36,47 +44,115 @@ class _EditProfileModalState extends State<EditProfileModal> {
     final data = doc.data()?['profile'] ?? {};
 
     setState(() {
-      _nameCtrl.text = (data['name'] ?? _auth.currentUser?.displayName ?? '').toString();
+_nameCtrl.text =
+    (doc.data()?['username'] ?? _auth.currentUser?.displayName ?? '').toString();
       _ageCtrl.text = (data['age']?.toString() ?? '');
       _gender = data['gender'];
-      _bloodType = data['bloodType'];
       _conditions.addAll(List<String>.from(data['conditions'] ?? []));
+      _profileImageUrl = doc.data()?['profileImage'];
+      _originalName = _nameCtrl.text;
     });
   }
 
-  Future<void> _save() async {
-    final uid = _auth.currentUser?.uid;
-    if (uid == null || _saving) return;
+    Future<void> _pickProfileImage() async {
+      final picker = ImagePicker();
+      final picked = await picker.pickImage(source: ImageSource.gallery);
+      if (picked == null) return;
 
-    setState(() => _saving = true);
+      setState(() => _uploading = true);
+      final uid = _auth.currentUser?.uid;
+      if (uid == null) return;
 
-    try {
+      final file = File(picked.path);
+
+      final ref = _storage.ref().child('profile_images/$uid/profile.jpg');
+
+      // Upload file
+      await ref.putFile(file);
+
+      final url = await ref.getDownloadURL();
+
       await _firestore.collection('users').doc(uid).set({
-        'profile': {
-          'name': _nameCtrl.text.trim(),
-          'age': int.tryParse(_ageCtrl.text.trim()) ?? 0,
-          'gender': _gender,
-          'bloodType': _bloodType,
-          'conditions': _conditions.toList(),
-        },
+        'profileImage': url,
         'updatedAt': FieldValue.serverTimestamp(),
       }, SetOptions(merge: true));
 
-      if (mounted) {
-        Navigator.pop(context, true);
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-          content: Text('✅ Profile updated successfully'),
-          backgroundColor: Color(0xFF3B82F6),
-        ));
-      }
-    } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('⚠️ Failed to update profile: $e')),
-      );
-    } finally {
-      if (mounted) setState(() => _saving = false);
+      setState(() {
+        _uploading = false;
+        _profileImageUrl = url;
+      });
     }
+
+
+Future<void> _removeProfileImage() async {
+  final uid = _auth.currentUser?.uid;
+  if (uid == null) return;
+
+  setState(() => _uploading = true); 
+
+  try {
+    final ref = _storage.ref().child('profile_images/$uid/profile.jpg');
+    await ref.delete();
+  } catch (_) {}
+
+  await _firestore.collection('users').doc(uid).set({
+    'profileImage': FieldValue.delete(),
+    'updatedAt': FieldValue.serverTimestamp(),
+  }, SetOptions(merge: true));
+
+  await Future.delayed(const Duration(milliseconds: 800));
+
+  setState(() {
+    _profileImageUrl = null;
+    _uploading = false; 
+  });
+
+  ScaffoldMessenger.of(context).showSnackBar(
+    const SnackBar(
+      content: Text('🗑️ Profile image removed successfully'),
+      backgroundColor: Colors.redAccent,
+    ),
+  );
+}
+
+
+
+Future<void> _save() async {
+  final uid = _auth.currentUser?.uid;
+  if (uid == null || _saving) return;
+
+  setState(() => _saving = true);
+
+  try {
+    await _firestore.collection('users').doc(uid).set({
+      'username': _nameCtrl.text.trim(), 
+      'profile': {
+        'age': int.tryParse(_ageCtrl.text.trim()) ?? 0,
+        'gender': _gender,
+        'conditions': _conditions.toList(),
+      },
+      'updatedAt': FieldValue.serverTimestamp(),
+    }, SetOptions(merge: true));
+
+
+    await _auth.currentUser?.updateDisplayName(_nameCtrl.text.trim());
+
+    if (mounted) {
+      Navigator.pop(context, true);
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+        content: Text('✅ Profile updated successfully'),
+        backgroundColor: Color(0xFF3B82F6),
+      ));
+    }
+  } catch (e) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('⚠️ Failed to update profile: $e')),
+    );
+  } finally {
+    if (mounted) setState(() => _saving = false);
   }
+}
+
 
   void _addCondition() {
     final controller = TextEditingController();
@@ -126,7 +202,7 @@ class _EditProfileModalState extends State<EditProfileModal> {
             left: 24,
             right: 24,
             top: 20,
-            bottom: MediaQuery.of(context).viewInsets.bottom + 30,
+            bottom: MediaQuery.of(context).viewInsets.bottom + 100,
           ),
           child: SingleChildScrollView(
             child: Column(
@@ -153,15 +229,115 @@ class _EditProfileModalState extends State<EditProfileModal> {
                     ),
                   ),
                 ),
-                const SizedBox(height: 24),
+                const SizedBox(height: 20),
 
-                _inputField(
-                  label: "Full Name",
-                  controller: _nameCtrl,
-                  icon: Icons.person_rounded,
-                  hint: "Enter your name",
+                
+                Column(
+                  children: [
+                    Stack(
+                      alignment: Alignment.center,
+                      children: [
+                        CircleAvatar(
+                          radius: 45,
+                          backgroundColor: const Color(0xFF37B7A5),
+                          backgroundImage: _profileImageUrl != null
+                              ? NetworkImage(_profileImageUrl!)
+                              : null,
+                          child: _profileImageUrl == null
+                              ? const Icon(Icons.person, color: Colors.white, size: 45)
+                              : null,
+                        ),
+                        if (_uploading)
+                          const Positioned.fill(
+                            child: Center(
+                              child: CircularProgressIndicator(
+                                  color: Colors.white, strokeWidth: 2),
+                            ),
+                          ),
+                        Positioned(
+                          bottom: 0,
+                          right: 0,
+                          child: InkWell(
+                            onTap: _pickProfileImage,
+                            child: Container(
+                              decoration: const BoxDecoration(
+                                color: Color(0xFF37B7A5),
+                                shape: BoxShape.circle,
+                              ),
+                              padding: const EdgeInsets.all(6),
+                              child: const Icon(Icons.edit, color: Colors.white, size: 20),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+
+                    if (_profileImageUrl != null)
+                      TextButton.icon(
+                        onPressed: _removeProfileImage,
+                        icon: const Icon(Icons.delete_outline, color: Colors.redAccent),
+                        label: const Text(
+                          "Remove Profile Image",
+                          style: TextStyle(
+                            color: Colors.redAccent,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ),
+                  ],
                 ),
 
+
+
+                const SizedBox(height: 24),
+                if (_nameCtrl.text.isNotEmpty)
+                Center(
+                  child: Padding(
+                    padding: const EdgeInsets.only(bottom: 6),
+                    child: Text(
+                      _nameCtrl.text,
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.w700,
+                        color: Color(0xFF111827),
+                      ),
+                    ),
+                  ),
+                ),
+              Padding(
+                padding: const EdgeInsets.only(bottom: 16),
+                child: Focus(
+                  onFocusChange: (focused) {
+                    if (!focused) {
+                      if (_nameCtrl.text.trim().isEmpty || _nameCtrl.text == _originalName) {
+                        setState(() {
+                          _nameCtrl.text = _originalName ?? '';
+                          _isNameEditing = false;
+                        });
+                      }
+                    } else {
+                      setState(() => _isNameEditing = true);
+                    }
+                  },
+                  child: TextField(
+                    controller: _nameCtrl,
+                    onChanged: (value) => setState(() {}), 
+                    decoration: InputDecoration(
+                      labelText: "Username",
+                      hintText: _isNameEditing ? "Enter your username" : _nameCtrl.text,
+                      prefixIcon: const Icon(Icons.person_rounded, color: Color(0xFF3B82F6)),
+                      filled: true,
+                      fillColor: const Color(0xFFF8FAFC),
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(14),
+                        borderSide: BorderSide.none,
+                      ),
+                    ),
+                  ),
+                ),
+              ),
                 _inputField(
                   label: "Age",
                   controller: _ageCtrl,
@@ -169,7 +345,6 @@ class _EditProfileModalState extends State<EditProfileModal> {
                   hint: "Enter your age",
                   type: TextInputType.number,
                 ),
-
                 _dropdownField(
                   label: "Gender",
                   icon: Icons.wc_rounded,
@@ -177,22 +352,12 @@ class _EditProfileModalState extends State<EditProfileModal> {
                   items: const ["Male", "Female", "Other"],
                   onChanged: (v) => setState(() => _gender = v),
                 ),
-
-                _dropdownField(
-                  label: "Blood Type",
-                  icon: Icons.bloodtype_rounded,
-                  value: _bloodType,
-                  items: const ["A+", "A-", "B+", "B-", "AB+", "AB-", "O+", "O-"],
-                  onChanged: (v) => setState(() => _bloodType = v),
-                ),
-
                 const SizedBox(height: 18),
                 const Text("Conditions",
                     style: TextStyle(
                         fontWeight: FontWeight.w700,
                         color: Color(0xFF111827),
                         fontSize: 16)),
-
                 const SizedBox(height: 8),
                 Wrap(
                   spacing: 8,
@@ -208,7 +373,6 @@ class _EditProfileModalState extends State<EditProfileModal> {
                     );
                   }).toList(),
                 ),
-
                 const SizedBox(height: 10),
                 Center(
                   child: OutlinedButton.icon(
@@ -223,7 +387,6 @@ class _EditProfileModalState extends State<EditProfileModal> {
                     ),
                   ),
                 ),
-
                 const SizedBox(height: 30),
 
                 Center(
@@ -232,9 +395,9 @@ class _EditProfileModalState extends State<EditProfileModal> {
                     style: ElevatedButton.styleFrom(
                       backgroundColor: const Color(0xFF3B82F6),
                       shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(30)),
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 40, vertical: 14),
+                        borderRadius: BorderRadius.circular(30),
+                      ),
+                      padding: const EdgeInsets.symmetric(horizontal: 40, vertical: 14),
                     ),
                     icon: _saving
                         ? const SizedBox(
@@ -252,6 +415,10 @@ class _EditProfileModalState extends State<EditProfileModal> {
                     ),
                   ),
                 ),
+
+                const SizedBox(height: 16),
+
+
               ],
             ),
           ),

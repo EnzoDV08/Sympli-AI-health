@@ -6,6 +6,7 @@ import 'package:sympli_ai_health/app/core/widgets/ask_bar.dart';
 import 'package:sympli_ai_health/app/core/widgets/quick_ask_section.dart';
 import 'package:sympli_ai_health/app/features/home/widgets/medication_reminder_widget.dart';
 import 'package:go_router/go_router.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 
 const _kHeaderBg = 'assets/images/header_bg_grain.png';
 
@@ -106,7 +107,7 @@ class _HeaderCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final topInset = MediaQuery.of(context).padding.top;
-    const bottomRadius = 96.0;
+    const bottomRadius = 24.0;
     final headerHeight = 320.0 + topInset;
 
     return Container(
@@ -316,20 +317,56 @@ class _HeaderTopRow extends StatelessWidget {
   }
 }
 
-class _UserAvatar extends StatelessWidget {
+class _UserAvatar extends StatefulWidget {
   const _UserAvatar({required this.user, this.radius = 20});
   final User? user;
   final double radius;
 
   @override
+  State<_UserAvatar> createState() => _UserAvatarState();
+}
+
+class _UserAvatarState extends State<_UserAvatar> {
+  String? _userProfileImage;
+  Stream<DocumentSnapshot<Map<String, dynamic>>>? _userStream;
+
+  @override
+  void initState() {
+    super.initState();
+
+    final uid = widget.user?.uid;
+    if (uid != null) {
+      _userStream = FirebaseFirestore.instance
+          .collection('users')
+          .doc(uid)
+          .snapshots();
+
+      _userStream!.listen((snapshot) {
+        final data = snapshot.data();
+        if (data != null && data['profileImage'] != null) {
+          setState(() => _userProfileImage = data['profileImage']);
+        } else {
+          setState(() => _userProfileImage = null);
+        }
+      });
+    }
+  }
+
+  @override
+  void dispose() {
+    _userStream = null;
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
-    final photo = user?.photoURL ?? '';
+    final photo = _userProfileImage ?? widget.user?.photoURL ?? '';
     final hasPhoto = photo.trim().isNotEmpty;
 
     Widget placeholder() => Icon(
           CupertinoIcons.person_alt_circle_fill,
           color: Colors.black54,
-          size: radius * 1.8,
+          size: widget.radius * 1.8,
         );
 
     return Container(
@@ -339,16 +376,18 @@ class _UserAvatar extends StatelessWidget {
         color: Colors.white.withValues(alpha: .25),
       ),
       child: CircleAvatar(
-        radius: radius,
+        radius: widget.radius,
         backgroundColor: Colors.white,
-        backgroundImage: hasPhoto ? NetworkImage(photo) : null,
+        backgroundImage: hasPhoto
+            ? NetworkImage(photo)
+            : const AssetImage('assets/images/ai_avatar.png') as ImageProvider,
         child: hasPhoto
             ? null
             : ClipOval(
                 child: Image.asset(
                   'assets/icons/ic_avatar_placeholder.png',
-                  width: radius * 2,
-                  height: radius * 2,
+                  width: widget.radius * 2,
+                  height: widget.radius * 2,
                   fit: BoxFit.cover,
                   errorBuilder: (_, __, ___) => placeholder(),
                 ),

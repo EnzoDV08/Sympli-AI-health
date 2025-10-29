@@ -12,6 +12,8 @@ import 'package:sympli_ai_health/app/features/account/pages/profile_screen.dart'
 import 'package:sympli_ai_health/app/features/account/pages/settings_screen.dart';
 import 'package:sympli_ai_health/app/features/chat_ai/pages/chat_ai_screen.dart';
 import 'package:sympli_ai_health/app/features/logs/pages/logs_screen.dart';
+import 'package:sympli_ai_health/app/features/notifications/pages/notifications_screen.dart';
+
 
 final _rootNavigatorKey = GlobalKey<NavigatorState>();
 final routerProvider = Provider<GoRouter>((ref) {
@@ -63,6 +65,7 @@ final routerProvider = Provider<GoRouter>((ref) {
                       }
                     },
                     onBellTap: () {
+                      context.go('/notifications');
                     },
                   ),
                 ),
@@ -94,6 +97,10 @@ final routerProvider = Provider<GoRouter>((ref) {
                 builder: (context, state) => const SettingsScreen(),
               ),
             ],
+          ),
+          GoRoute(
+            path: '/notifications',
+            builder: (context, state) => const NotificationsScreen(),
           ),
         ],
       ),

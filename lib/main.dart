@@ -9,6 +9,7 @@ import 'package:sympli_ai_health/firebase_options.dart';
 import 'package:sympli_ai_health/app/services/router.dart';
 import 'package:go_router/go_router.dart';
 import 'package:sympli_ai_health/app/utils/logging.dart';
+import 'package:sympli_ai_health/app/features/account/services/app_settings.dart';
 
 final GlobalKey<NavigatorState> _navKey = GlobalKey<NavigatorState>();
 
@@ -63,15 +64,34 @@ class MyApp extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final router = ref.watch(routerProvider);
+    final settings = ref.watch(appSettingsProvider);
 
-return MaterialApp.router(
-  title: 'Sympli AI Health',
-  debugShowCheckedModeBanner: false,
-  theme: ThemeData(
-    colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xFF37B7A5)),
-    useMaterial3: true,
-  ),
-  routerConfig: router, 
-);
+    final baseTheme = ThemeData(
+      colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xFF37B7A5)),
+      useMaterial3: true,
+    );
+
+    final theme = settings.darkModeEnabled
+        ? baseTheme.copyWith(
+            scaffoldBackgroundColor: const Color(0xFF0D1117),
+            textTheme: baseTheme.textTheme.apply(
+              bodyColor: Colors.white,
+              displayColor: Colors.white,
+            ),
+          )
+        : baseTheme.copyWith(
+            scaffoldBackgroundColor: Colors.white,
+            textTheme: baseTheme.textTheme.apply(
+              bodyColor: Colors.black87,
+              displayColor: Colors.black87,
+            ),
+          );
+
+    return MaterialApp.router(
+      title: 'Sympli AI Health',
+      debugShowCheckedModeBanner: false,
+      theme: theme,
+      routerConfig: router,
+    );
   }
 }

@@ -1,5 +1,10 @@
+import 'dart:io';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:firebase_storage/firebase_storage.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:sympli_ai_health/app/utils/logging.dart' as log;
+import 'package:sympli_ai_health/app/features/meds/services/med_reminder_service.dart';
 
 class SympliUser {
   final String uid;
@@ -8,6 +13,7 @@ class SympliUser {
   final bool? onboardingComplete;
   final Map<String, dynamic>? profile;
   final List<dynamic>? medications;
+  final String? profileImage;
 
   SympliUser({
     required this.uid,
@@ -16,6 +22,7 @@ class SympliUser {
     this.onboardingComplete,
     this.profile,
     this.medications,
+    this.profileImage,
   });
 
   factory SympliUser.fromDoc(DocumentSnapshot<Map<String, dynamic>> doc) {
@@ -27,6 +34,7 @@ class SympliUser {
       onboardingComplete: d['onboardingComplete'] as bool?,
       profile: d['profile'] as Map<String, dynamic>?,
       medications: (d['medications'] as List?) ?? const [],
+      profileImage: d['profileImage'] as String?, 
     );
   }
 }
@@ -52,7 +60,8 @@ class MedicationReminder {
     required this.active,
   });
 
-  factory MedicationReminder.fromDoc(DocumentSnapshot<Map<String, dynamic>> doc) {
+  factory MedicationReminder.fromDoc(
+      DocumentSnapshot<Map<String, dynamic>> doc) {
     final d = doc.data() ?? {};
     final plan = d['plan'] ?? {};
     return MedicationReminder(
@@ -70,7 +79,7 @@ class MedicationReminder {
 
 class ProfileRepository {
   final _firestore = FirebaseFirestore.instance;
-  
+
   Stream<SympliUser?> userStream(String uid) {
     return _firestore
         .collection('users')
@@ -86,7 +95,8 @@ class ProfileRepository {
         .collection('medication_reminders')
         .orderBy('createdAt', descending: true)
         .snapshots()
-        .map((snapshot) => snapshot.docs.map(MedicationReminder.fromDoc).toList());
+        .map((snapshot) =>
+            snapshot.docs.map(MedicationReminder.fromDoc).toList());
   }
 
   Future<void> updateTime(String uid, String reminderId,
@@ -182,18 +192,97 @@ class ProfileRepository {
         'medications': FieldValue.arrayRemove([medName]),
         'updatedAt': FieldValue.serverTimestamp(),
       });
-      log.logI('🗑️ Deleted "$medName" reminder and removed from medications array');
+      log.logI('🗑️ Deleted "$medName" reminder and removed from medications');
     }
   }
 
-  // 🔹 Toggle active state
-  Future<void> setActive(String uid, String reminderId, bool active) async {
-    await _firestore
-        .collection('users')
-        .doc(uid)
-        .collection('medication_reminders')
-        .doc(reminderId)
-        .update({'active': active});
-    log.logI('✅ Reminder $reminderId → Active: $active');
+Future<void> setActive(String uid, String reminderId, bool active) async {
+  final reminderRef = _firestore
+      .collection('users')
+      .doc(uid)
+      .collection('medication_reminders')
+      .doc(reminderId);
+
+  await reminderRef.update({'active': active});
+  log.logI('✅ Reminder $reminderId → Active: $active');
+
+  try {
+    final snap = await reminderRef.get();
+    if (!snap.exists) return;
+    final data = snap.data()!;
+    final name = data['name'] ?? '';
+    final baseId = reminderId.hashCode & 0x7FFFFFFF;
+
+    if (!active) {
+      await medReminderService.cancelAllFor(baseId);
+      log.logI('🧹 Canceled local notifications for "$name" (set inactive)');
+    } else {
+      final plan = data['plan'] as Map?;
+      if (plan != null) {
+        await medReminderService.scheduleLocalNotification(
+          uid: uid,
+          name: name,
+          dosage: data['dosage'],
+          instructions: data['instructions'],
+          repeat: plan['repeat'] ?? 'daily',
+          time: plan['time'] ?? '08:00',
+          timezone: plan['timezone'] ?? 'SAST',
+          days: (plan['days'] as List?)?.map((e) => e as int).toList(),
+          n: plan['n'],
+          hours: plan['hours'],
+        );
+        log.logI('🔁 Re-scheduled "$name" (set active again)');
+      }
+    }
+  } catch (e, st) {
+    log.logE('⚠️ Error toggling reminder active state', e, st);
+  }
+}
+}
+
+extension ProfileImageRepo on ProfileRepository {
+  FirebaseStorage get _storage => FirebaseStorage.instance;
+  FirebaseAuth get _auth => FirebaseAuth.instance;
+
+  Future<String?> uploadProfileImage() async {
+    final picker = ImagePicker();
+    final picked = await picker.pickImage(source: ImageSource.gallery);
+    if (picked == null) return null;
+
+    final uid = _auth.currentUser?.uid;
+    if (uid == null) return null;
+
+    final file = File(picked.path);
+    final ref = _storage.ref().child('profile_images/$uid.jpg');
+
+    final uploadTask = await ref.putFile(file);
+    final url = await uploadTask.ref.getDownloadURL();
+
+    await _firestore.collection('users').doc(uid).set({
+      'profileImage': url,
+      'updatedAt': FieldValue.serverTimestamp(),
+    }, SetOptions(merge: true));
+
+    log.logI('📸 Uploaded new profile image for user $uid');
+    return url;
+  }
+
+  Future<void> removeProfileImage() async {
+    final uid = _auth.currentUser?.uid;
+    if (uid == null) return;
+
+    try {
+      final ref = _storage.ref().child('profile_images/$uid.jpg');
+      await ref.delete();
+
+      await _firestore.collection('users').doc(uid).set({
+        'profileImage': FieldValue.delete(),
+        'updatedAt': FieldValue.serverTimestamp(),
+      }, SetOptions(merge: true));
+
+      log.logI('🧹 Removed profile image for user $uid');
+    } catch (e, st) {
+      log.logE('⚠️ Error removing profile image', e, st);
+    }
   }
 }

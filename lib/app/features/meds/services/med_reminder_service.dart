@@ -8,6 +8,8 @@ import 'package:android_intent_plus/flag.dart';
 import 'package:flutter/services.dart';
 import 'package:sympli_ai_health/app/utils/logging.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:sympli_ai_health/app/features/notifications/notification_manager.dart';
+
 
 
 final FlutterLocalNotificationsPlugin notificationsPlugin =
@@ -235,6 +237,12 @@ class MedReminderService {
           );
       }
 
+      notificationManager.addNotification(
+        'Time to take $name',
+        (dosage?.isNotEmpty ?? false)
+            ? 'Dosage: $dosage'
+            : 'Take your $name medication.',
+      );
       logI("🔔 Local notification scheduled for $name ($repeat at $time)",
           name: "MedReminderService");
     } catch (e, st) {

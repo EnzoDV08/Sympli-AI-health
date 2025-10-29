@@ -1,5 +1,9 @@
-// lib/app/features/chat_ai/pages/chat_ai_screen.dart
 import 'dart:ui';
+import 'dart:convert';
+import 'dart:typed_data';
+import 'package:http/http.dart' as http;
+import 'package:audioplayers/audioplayers.dart';
+import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:lottie/lottie.dart';
@@ -11,6 +15,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart'; 
 import 'package:sympli_ai_health/app/core/widgets/quick_ask_section.dart';
 import 'package:sympli_ai_health/app/utils/isolate_reminder.dart';
+
 
 
 class ChatAIScreen extends StatefulWidget {
@@ -25,7 +30,6 @@ class ChatAIScreen extends StatefulWidget {
 
   @override
   State<ChatAIScreen> createState() => _ChatAIScreenState();
-  
 }
 
 class _ChatAIScreenState extends State<ChatAIScreen> with SingleTickerProviderStateMixin {
@@ -35,48 +39,70 @@ class _ChatAIScreenState extends State<ChatAIScreen> with SingleTickerProviderSt
   final List<Map<String, dynamic>> _messages = [];
   bool _loading = false;
   String? _chatId;
+  final AudioPlayer _ttsPlayer = AudioPlayer();
+  final String _ttsApiKey = dotenv.env['GOOGLE_TTS_API_KEY'] ?? '';
+  String? _currentlyPlayingText;
   late AnimationController _pulseController;
+  String? _userProfileImage; 
+  Stream<DocumentSnapshot<Map<String, dynamic>>>? _userStream; 
 
- @override
-void initState() {
-  super.initState();
-  logI("ChatAIScreen.initState followUpCondition=${widget.followUpCondition}", name: "CHAT");
-  _pulseController = AnimationController(
-    vsync: this,
-    duration: const Duration(seconds: 1),
-  )..repeat(reverse: true);
 
- if (widget.existingChatId != null) {
-  // ✅ Case 1: Continue old chat
-  _loadChatHistory(widget.existingChatId!);
-  _chatId = widget.existingChatId;
-} else if (widget.followUpCondition != null) {
-  // ✅ Case 2: Quick Ask (from Home)
-  _startNewChat().then((_) {
-    // Slight delay ensures chatId is created before sending
-    Future.delayed(const Duration(milliseconds: 600), () {
-      if (mounted) {
-        final question = "I have a question about ${widget.followUpCondition}.";
-        _controller.text = question;
-        _sendMessage();
+      @override
+      void initState() {
+        super.initState();
+        logI("ChatAIScreen.initState followUpCondition=${widget.followUpCondition}", name: "CHAT");
+        _pulseController = AnimationController(
+          vsync: this,
+          duration: const Duration(seconds: 1),
+        )..repeat(reverse: true);
+            _ttsPlayer.onPlayerComplete.listen((_) {
+            if (mounted) setState(() => _currentlyPlayingText = null);
+          });
+          final uid = FirebaseAuth.instance.currentUser?.uid;
+  if (uid != null) {
+    _userStream = FirebaseFirestore.instance
+        .collection('users')
+        .doc(uid)
+        .snapshots();
+
+    _userStream!.listen((snapshot) {
+      final data = snapshot.data();
+      if (data != null && data['profileImage'] != null) {
+        setState(() => _userProfileImage = data['profileImage']);
+      } else {
+        setState(() => _userProfileImage = null);
       }
     });
-  });
-} else {
-  // ✅ Case 3: Fresh empty chat
+  }
+
+      if (widget.existingChatId != null) {
+        _loadChatHistory(widget.existingChatId!);
+        _chatId = widget.existingChatId;
+      } else if (widget.followUpCondition != null) {
+        _startNewChat().then((_) {
+          Future.delayed(const Duration(milliseconds: 600), () {
+            if (mounted) {
+              final question = "I have a question about ${widget.followUpCondition}.";
+              _controller.text = question;
+              _sendMessage();
+            }
+          });
+        });
+      } else {
   _startNewChat();
-}
+  }
 }
 
 
 @override
 void dispose() {
-  _finalizeChat(); // ✅ save last message + title for Logs
+  _finalizeChat(); 
   _controller.dispose();
   _scrollController.dispose();
   _pulseController.dispose();
   logI("ChatAIScreen.dispose()", name: "CHAT");
   super.dispose();
+   _userStream = null;
 }
 
 Future<void> _startNewChat() async {
@@ -93,18 +119,16 @@ Future<void> _sendMessage() async {
   logI("SEND: $text", name: "CHAT");
 
   setState(() {
-    _messages.insert(0,{'sender': 'user', 'text': text, 'time': DateTime.now()});
+    _messages.add({'sender': 'user', 'text': text, 'time': DateTime.now()});
     _controller.clear();
     _loading = true;
   });
-
   _scrollToBottom();
-  if (!mounted) return;
 
-  // 🔹 Delay showing typing bubble (non-blocking)
+  if (!mounted) return;
   Timer(const Duration(milliseconds: 400), () {
     if (_loading && mounted) {
-      setState(() => _messages.insert(0,{'sender': 'typing', 'time': DateTime.now()}));
+      setState(() => _messages.add({'sender': 'typing', 'time': DateTime.now()}));
       _scrollToBottom();
     }
   });
@@ -117,13 +141,12 @@ Future<void> _sendMessage() async {
 
     logI("AI TEXT: ${aiResponse.text}", name: "CHAT");
 
-    // 🔹 Safely update messages AFTER frame to avoid index conflicts
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
       setState(() {
         _messages.removeWhere((m) => m['sender'] == 'typing');
 
-        _messages.insert(0,{
+        _messages.add({
           'sender': 'ai',
           'text': aiResponse.text.isNotEmpty
               ? aiResponse.text
@@ -131,42 +154,41 @@ Future<void> _sendMessage() async {
           'time': DateTime.now(),
         });
 
-        // Remove any previous reminder bubble
+        _speakText(aiResponse.text);
+
         _messages.removeWhere((m) => m['sender'] == 'reminder_proposal');
 
-final looksLikeFollowUp = aiResponse.text.trim().endsWith('?');
-final proposal = aiResponse.medicationProposal;
-final textLower = aiResponse.text.toLowerCase();
+        final looksLikeFollowUp = aiResponse.text.trim().endsWith('?');
+        final proposal = aiResponse.medicationProposal;
+        final textLower = aiResponse.text.toLowerCase();
 
-final shouldShowProposal = proposal != null &&
-    proposal.isNotEmpty &&
-    (textLower.contains("i’ll save") ||
-     textLower.contains("i will save") ||
-     textLower.contains("reminder for") ||
-     textLower.contains("confirm reminder") ||
-     textLower.contains("save a reminder"));
+        final shouldShowProposal = proposal != null &&
+            proposal.isNotEmpty &&
+            (textLower.contains("i’ll save") ||
+                textLower.contains("i will save") ||
+                textLower.contains("reminder for") ||
+                textLower.contains("confirm reminder") ||
+                textLower.contains("save a reminder"));
 
-if (shouldShowProposal) {
-  _messages.insert(0,{
-    'sender': 'reminder_proposal',
-    'data': proposal,
-    'time': DateTime.now(),
-  });
-} else if (!looksLikeFollowUp) {
-  _messages.insert(0,{
-    'sender': 'system',
-    'text':
-        '💡 I didn’t detect a reminder plan. Try saying “Remind me to take Panado every 6 hours.”',
-    'time': DateTime.now(),
-  });
-}
-
+        if (shouldShowProposal) {
+          _messages.add({
+            'sender': 'reminder_proposal',
+            'data': proposal,
+            'time': DateTime.now(),
+          });
+        } else if (!looksLikeFollowUp) {
+          _messages.add({
+            'sender': 'system',
+            'text':
+                '💡 I didn’t detect a reminder plan. Try saying “Remind me to take Panado every 6 hours.”',
+            'time': DateTime.now(),
+          });
+        }
 
         _loading = false;
       });
     });
 
-    // 🔹 Retrieve Firestore chat ID if new
     if (_chatId == null) {
       final uid = FirebaseAuth.instance.currentUser?.uid;
       if (uid != null) {
@@ -196,7 +218,7 @@ if (shouldShowProposal) {
       setState(() {
         _loading = false;
         _messages.removeWhere((m) => m['sender'] == 'typing');
-        _messages.insert(0,{
+        _messages.add({
           'sender': 'ai',
           'text': "⚠️ Sorry, something went wrong. Please try again.",
           'time': DateTime.now(),
@@ -206,6 +228,7 @@ if (shouldShowProposal) {
     _scrollToBottom();
   }
 }
+
 
 
   Future<void> _loadChatHistory(String chatId) async {
@@ -243,8 +266,6 @@ Future<void> _finalizeChat() async {
   if (_chatId == null) return;
   final uid = FirebaseAuth.instance.currentUser?.uid;
   if (uid == null) return;
-
-  // 🔎 Check Firestore message count
   final messagesSnap = await FirebaseFirestore.instance
       .collection('users')
       .doc(uid)
@@ -254,7 +275,6 @@ Future<void> _finalizeChat() async {
       .limit(1)
       .get();
 
-  // 🧹 Delete empty chats (no messages ever sent)
   if (messagesSnap.docs.isEmpty) {
     await FirebaseFirestore.instance
         .collection('users')
@@ -280,17 +300,65 @@ Future<void> _finalizeChat() async {
 }
 
 
-
 void _scrollToBottom() {
   Future.delayed(const Duration(milliseconds: 150), () {
     if (_scrollController.hasClients) {
       _scrollController.animateTo(
-        0.0, // scroll to top since reversed: true
+        _scrollController.position.maxScrollExtent,
         duration: const Duration(milliseconds: 250),
         curve: Curves.easeOut,
       );
     }
   });
+}
+
+Future<void> _speakText(String text) async {
+  if (_ttsApiKey.isEmpty) {
+    print("❌ Missing GOOGLE_TTS_API_KEY in .env");
+    return;
+  }
+
+    final cleanedText = text
+      .replaceAll(RegExp(
+          r'[\u{1F600}-\u{1F64F}'
+          r'\u{1F300}-\u{1F5FF}' 
+          r'\u{1F680}-\u{1F6FF}' 
+          r'\u{2600}-\u{26FF}'  
+          r'\u{2700}-\u{27BF}]', 
+          unicode: true), '')
+      .replaceAll(RegExp(r'[^\x00-\x7F]+'), '') 
+      .replaceAll(RegExp(r'\s+'), ' ') 
+      .trim();
+
+  final url = Uri.parse(
+      'https://texttospeech.googleapis.com/v1/text:synthesize?key=$_ttsApiKey');
+
+  final body = jsonEncode({
+    "input": {"text": cleanedText},
+    "voice": {
+      "languageCode": "en-US",
+      "name": "en-US-Neural2-F",
+    },
+    "audioConfig": {
+      "audioEncoding": "MP3",
+      "speakingRate": 1.0,
+    }
+  });
+
+  try {
+    final res = await http.post(url,
+        headers: {"Content-Type": "application/json"}, body: body);
+
+    if (res.statusCode == 200) {
+      final data = jsonDecode(res.body);
+      final audio = base64.decode(data['audioContent']);
+      await _ttsPlayer.play(BytesSource(Uint8List.fromList(audio)));
+    } else {
+      print("❌ TTS Error: ${res.statusCode} ${res.body}");
+    }
+  } catch (e) {
+    print("⚠️ Failed to speak: $e");
+  }
 }
 
 
@@ -315,8 +383,6 @@ Future<void> _applyReminder({
     final dosage = (data['dosage'] ?? '').toString();
     final instructions = (data['instructions'] ?? '').toString();
     final schedule = data['schedule'] ?? {};
-
-    // ✅ Run heavy work (Firestore + notifications) in a background isolate
     unawaited(ReminderIsolate.runInBackground({
       'uid': uid,
       'name': name,
@@ -332,8 +398,6 @@ Future<void> _applyReminder({
       'n': schedule['n'],
       'hours': schedule['hours'],
     }));
-
-    // ✅ Give the isolate a moment to start so UI feels responsive
     await Future.delayed(const Duration(milliseconds: 100));
 
     if (!mounted) return;
@@ -368,145 +432,215 @@ Future<void> _applyReminder({
 }
 
 
+Widget _buildHeroHeader(BuildContext context) {
+  return Container(
+    margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+    padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 22),
+    decoration: BoxDecoration(
+      borderRadius: BorderRadius.circular(24),
+      gradient: LinearGradient(
+        colors: [
+          Colors.white.withOpacity(0.45),
+          Colors.white.withOpacity(0.25),
+        ],
+        begin: Alignment.topLeft,
+        end: Alignment.bottomRight,
+      ),
+      border: Border.all(
+        color: Colors.white.withOpacity(0.6),
+        width: 1.3,
+      ),
+      boxShadow: [
+        BoxShadow(
+          color: const Color(0xFF37B7A5).withOpacity(0.15),
+          blurRadius: 30,
+          offset: const Offset(0, 10),
+        ),
+      ],
+    ),
+    child: Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      children: [
+        Container(
+          decoration: BoxDecoration(
+            color: Colors.white.withOpacity(0.4),
+            borderRadius: BorderRadius.circular(14),
+          ),
+          child: IconButton(
+            icon: const Icon(Icons.arrow_back_ios_new_rounded,
+                color: Color(0xFF11695F), size: 22),
+            onPressed: () => Navigator.pop(context),
+          ),
+        ),
+        Row(
+          children: [
+            const Text(
+              "Sympli AI",
+              style: TextStyle(
+                fontSize: 22,
+                fontWeight: FontWeight.bold,
+                color: Colors.black87,
+              ),
+            ),
+            const SizedBox(width: 6),
+            FadeTransition(
+              opacity: _pulseController,
+              child: const Icon(Icons.circle,
+                  color: Color(0xFF37B7A5), size: 10),
+            ),
+          ],
+        ),
 
+        Container(
+          padding: const EdgeInsets.all(10),
+          decoration: BoxDecoration(
+            gradient: const LinearGradient(
+              colors: [Color(0xFF37B7A5), Color(0xFF1CB5E0)],
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+            ),
+            borderRadius: BorderRadius.circular(16),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(0.1),
+                blurRadius: 10,
+                offset: const Offset(0, 4),
+              ),
+            ],
+          ),
+          child: IconButton(
+            icon: const Icon(Icons.history_rounded,
+                color: Colors.white, size: 24),
+            onPressed: () => Navigator.push(
+              context,
+              MaterialPageRoute(builder: (context) => const LogsScreen()),
+            ),
+          ),
+        ),
+      ],
+    ),
+  );
+}
 
 @override
 Widget build(BuildContext context) {
   final keyboardVisible = MediaQuery.of(context).viewInsets.bottom > 0;
 
   return Scaffold(
-    resizeToAvoidBottomInset: false, // ✅ Let the AskBar move up
+    resizeToAvoidBottomInset: false, 
     extendBodyBehindAppBar: false,
-    appBar: AppBar(
-      backgroundColor: Colors.white,
-      elevation: 0,
-      leading: IconButton(
-        icon: const Icon(Icons.arrow_back_ios_new_rounded, color: Colors.black87),
-        onPressed: () => Navigator.pop(context),
-      ),
-      title: Row(
-        children: [
-          const Text(
-            'Sympli AI',
-            style: TextStyle(
-              fontSize: 22,
-              fontWeight: FontWeight.bold,
-              color: Colors.black87,
-              letterSpacing: 0.8,
-            ),
-          ),
-          const SizedBox(width: 8),
-          FadeTransition(
-            opacity: _pulseController,
-            child: const Icon(Icons.circle, color: Colors.greenAccent, size: 10),
-          ),
-        ],
-      ),
-      actions: [
-        IconButton(
-          icon: const Icon(Icons.history_rounded, color: Colors.black87),
-          onPressed: () => Navigator.push(
-            context,
-            MaterialPageRoute(builder: (context) => const LogsScreen()),
-          ),
-        ),
-      ],
-    ),
-
 body: Stack(
   children: [
-    // 🌈 Background
     Positioned.fill(
       child: Container(
-        color: const Color(0xFFF7F9FB),
-        child: BackdropFilter(
-          filter: ImageFilter.blur(sigmaX: 25, sigmaY: 25),
-          child: Container(color: Colors.white.withOpacity(0.05)),
+        decoration: const BoxDecoration(
+          gradient: LinearGradient(
+            colors: [
+              Color(0xFFE8FDFB),
+              Color(0xFFFDFEFF),
+              Color(0xFFE3F7FF),
+            ],
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+          ),
         ),
       ),
     ),
+    Positioned.fill(
+      child: BackdropFilter(
+        filter: ImageFilter.blur(sigmaX: 25, sigmaY: 25),
+        child: Container(color: Colors.white.withOpacity(0.05)),
+      ),
+    ),
 
-    // 💬 Main chat area
-   Padding(
-  padding: const EdgeInsets.only(bottom: 90),
-  child: Column(
-    children: [
-      const SizedBox(height: kToolbarHeight + -50), // ✅ smaller, cleaner spacing
-      Expanded(
-        child: _messages.isEmpty
-                ? _buildEmptyState()
-                    : ListView.builder(
-                    controller: _scrollController,
-                    reverse: true,
-                    padding: EdgeInsets.fromLTRB(
-                      16,
-                      12,
-                      16,
-                      MediaQuery.of(context).viewInsets.bottom + 120,
-                    ),
-
-                    itemCount: _messages.length,
-                    itemBuilder: (context, index) {
-                      final msg = _messages[index];
-                      final sender = msg['sender'];
-                      if (sender == 'typing') return const _TypingBubble();
-                      if (sender == 'reminder_proposal') {
-                        return ReminderConfirmationBubble(
-                          proposalData: msg['data'],
-                          onConfirm: (data) async =>
-                              await _applyReminder(data: data, indexToReplace: index),
-                          onCancel: () {
-                            if (!mounted) return;
-                            setState(() {
-                              _messages[index] = {
-                                'sender': 'system',
-                                'text': 'Reminder cancelled.',
-                                'time': DateTime.now(),
-                              };
-                            });
+    SafeArea(
+      child: Column(
+        children: [
+          _buildHeroHeader(context),
+          Expanded(
+            child: Stack(
+              children: [
+              Padding(
+                padding: const EdgeInsets.only(bottom: 130, top: 8),
+                child: _messages.isEmpty
+                      ? _buildEmptyState()
+                      : ListView.builder(
+                          controller: _scrollController,
+                          reverse: false,
+                          physics: const BouncingScrollPhysics(),
+                          padding: EdgeInsets.fromLTRB(
+                            16,
+                            12,
+                            16,
+                            MediaQuery.of(context).viewInsets.bottom + 120,
+                          ),
+                          itemCount: _messages.length,
+                          itemBuilder: (context, index) {
+                            final msg = _messages[index];
+                            final sender = msg['sender'];
+                            if (sender == 'typing') return const _TypingBubble();
+                            if (sender == 'reminder_proposal') {
+                              return ReminderConfirmationBubble(
+                                proposalData: msg['data'],
+                                onConfirm: (data) async =>
+                                    await _applyReminder(data: data, indexToReplace: index),
+                                onCancel: () {
+                                  if (!mounted) return;
+                                  setState(() {
+                                    _messages[index] = {
+                                      'sender': 'system',
+                                      'text': 'Reminder cancelled.',
+                                      'time': DateTime.now(),
+                                    };
+                                  });
+                                },
+                              );
+                            }
+                            return _buildFancyBubble(msg);
                           },
-                        );
-                      }
-                      return _buildFancyBubble(msg);
-                    },
+                        ),
+                ),
+
+                          if (!keyboardVisible)
+                            Positioned(
+                              left: 16,
+                              right: 16,
+                              bottom: 95,
+                              child: QuickAskSection(
+                                onSelect: (label) {
+                                  _controller.text = "I have a question about $label.";
+                                  _sendMessage();
+                                },
+                              ),
+                            ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
+
+    AnimatedPositioned(
+      duration: const Duration(milliseconds: 250),
+      curve: Curves.easeOutCubic,
+      left: 0,
+      right: 0,
+      bottom: MediaQuery.of(context).viewInsets.bottom > 0
+          ? MediaQuery.of(context).viewInsets.bottom
+          : -17,
+      child: SafeArea(
+        top: false,
+        child: Center(
+          child: SizedBox(
+            width: MediaQuery.of(context).size.width * 1.32,
+            child: _buildAskBar(),
           ),
-
-          if (!keyboardVisible)
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              child: QuickAskSection(
-                onSelect: (label) {
-                  _controller.text = "I have a question about $label.";
-                  _sendMessage();
-                },
-              ),
-            ),
-        ],
+        ),
       ),
     ),
-
-    // 🚀 Floating AskBar — now works properly!
-  AnimatedPositioned(
-  duration: const Duration(milliseconds: 250),
-  curve: Curves.easeOutCubic,
-  left: 0,
-  right: 0,
-  bottom: MediaQuery.of(context).viewInsets.bottom > 0
-      ? MediaQuery.of(context).viewInsets.bottom
-      : -17, // slightly lower so it clears Quick Ask
-  child: SafeArea(
-    top: false,
-    child: Center(
-      child: SizedBox(
-        width: MediaQuery.of(context).size.width * 1.32, // ✅ perfect width
-        child: _buildAskBar(),
-      ),
-    ),
-  ),
-),
   ],
 ),
+
   );
 }
 
@@ -604,26 +738,12 @@ Widget _buildAskBar() {
                                 ),
                               ],
                             ),
-                          child: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              GestureDetector(
-                                // onTap: () async {
-                                //   final speechService = SpeechService();
-                                //   await speechService.init();
-                                //   final transcript = await speechService.recordAndTranscribe();
-                                //   if (transcript != null && transcript.isNotEmpty) {
-                                //     setState(() => _controller.text = transcript);
-                                //   }
-                                // },
-                                child: const Icon(Icons.mic_rounded,
-                                    color: Colors.white, size: 22),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: const [
+                                  Icon(Icons.send_rounded, color: Colors.white, size: 22),
+                                ],
                               ),
-                              const SizedBox(width: 8),
-                              const Icon(Icons.send_rounded,
-                                  color: Colors.white, size: 22),
-                            ],
-                          ),
 
                           ),
                         ),
@@ -642,41 +762,40 @@ Widget _buildFancyBubble(Map<String, dynamic> msg) {
   final isUser = sender == 'user';
   final text = msg['text'] ?? '';
 
-if (sender == 'system') {
-  return Center(
-    child: AnimatedOpacity(
-      opacity: 1,
-      duration: const Duration(milliseconds: 400),
-      child: Container(
-        margin: const EdgeInsets.symmetric(vertical: 10),
-        padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
-        decoration: BoxDecoration(
-          color: const Color(0xFF37B7A5).withOpacity(0.12),
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(
-            color: const Color(0xFF37B7A5).withOpacity(0.3),
-            width: 1.0,
+  if (sender == 'system') {
+    return Center(
+      child: AnimatedOpacity(
+        opacity: 1,
+        duration: const Duration(milliseconds: 400),
+        child: Container(
+          margin: const EdgeInsets.symmetric(vertical: 10),
+          padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
+          decoration: BoxDecoration(
+            color: const Color(0xFF37B7A5).withOpacity(0.12),
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(
+              color: const Color(0xFF37B7A5).withOpacity(0.3),
+              width: 1.0,
+            ),
           ),
-        ),
-        child: Text(
-          msg['text'] ?? '',
-          style: const TextStyle(
-            color: Color(0xFF11695F),
-            fontSize: 15,
-            fontWeight: FontWeight.w600,
-            height: 1.4,
+          child: Text(
+            msg['text'] ?? '',
+            style: const TextStyle(
+              color: Color(0xFF11695F),
+              fontSize: 15.5,
+              fontWeight: FontWeight.w600,
+              height: 1.4,
+            ),
           ),
         ),
       ),
-    ),
-  );
-}
+    );
+  }
 
   const aiOrbAnimation = 'assets/animations/ai_glow.json';
-  const aiProfileIcon = 'assets/images/ai_avatar.png'; 
 
   return Padding(
-    padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 6),
+    padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 8),
     child: Row(
       crossAxisAlignment: CrossAxisAlignment.end,
       mainAxisAlignment:
@@ -686,107 +805,138 @@ if (sender == 'system') {
           SizedBox(
             width: 45,
             height: 45,
-            child: Lottie.asset(
-              aiOrbAnimation,
-              fit: BoxFit.cover,
-              repeat: true,
-            ),
+            child: Lottie.asset(aiOrbAnimation, fit: BoxFit.cover, repeat: true),
           ),
-
         if (!isUser) const SizedBox(width: 8),
 
         Flexible(
-          child: Stack(
-            clipBehavior: Clip.none,
-            children: [
-              Positioned.fill(
+          child: Container(
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.only(
+                topLeft: const Radius.circular(18),
+                topRight: const Radius.circular(18),
+                bottomLeft: Radius.circular(isUser ? 18 : 6),
+                bottomRight: Radius.circular(isUser ? 6 : 18),
+              ),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.25),
+                  blurRadius: 20,
+                  spreadRadius: 2,
+                  offset: const Offset(0, 6),
+                ),
+              ],
+            ),
+            child: ClipRRect(
+              borderRadius: BorderRadius.only(
+                topLeft: const Radius.circular(18),
+                topRight: const Radius.circular(18),
+                bottomLeft: Radius.circular(isUser ? 18 : 6),
+                bottomRight: Radius.circular(isUser ? 6 : 18),
+              ),
+              child: BackdropFilter(
+                filter: ImageFilter.blur(sigmaX: 16, sigmaY: 16),
                 child: Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
                   decoration: BoxDecoration(
-                    borderRadius: BorderRadius.only(
-                      topLeft: const Radius.circular(18),
-                      topRight: const Radius.circular(18),
-                      bottomLeft: Radius.circular(isUser ? 18 : 6),
-                      bottomRight: Radius.circular(isUser ? 6 : 18),
+                    gradient: LinearGradient(
+                      colors: isUser
+                          ? [
+                              const Color(0xAAE0F7FA),
+                              const Color(0x55B2EBF2),
+                            ]
+                          : [
+                              Colors.white.withOpacity(0.6),
+                              Colors.white.withOpacity(0.35),
+                            ],
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
                     ),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black.withOpacity(0.25),
-                        blurRadius: 30,
-                        spreadRadius: 2,
-                        offset: const Offset(0, 6),
+                    border: Border.all(
+                      color: Colors.white.withOpacity(0.4),
+                      width: 1.2,
+                    ),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        text,
+                        style: TextStyle(
+                          fontSize: 16.5,
+                          fontWeight: FontWeight.w500,
+                          color: isUser
+                              ? Colors.black.withOpacity(0.85)
+                              : Colors.black.withOpacity(0.9),
+                          height: 1.45,
+                        ),
                       ),
-                      BoxShadow(
-                        color: isUser
-                            ? const Color(0xFF37B7A5).withOpacity(0.25)
-                            : const Color(0xFFFFA3A3).withOpacity(0.25),
-                        blurRadius: 50,
-                        spreadRadius: 5,
-                        offset: const Offset(0, 10),
-                      ),
+
+                      if (!isUser) const SizedBox(height: 6),
+
+                      /// 🎧 Listen / Stop button (styled correctly)
+                      if (!isUser)
+                        GestureDetector(
+                          onTap: () async {
+                            if (_currentlyPlayingText == text) {
+                              await _ttsPlayer.stop();
+                              setState(() => _currentlyPlayingText = null);
+                            } else {
+                              setState(() => _currentlyPlayingText = text);
+                              await _speakText(text);
+                              setState(() => _currentlyPlayingText = null);
+                            }
+                          },
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(
+                                _currentlyPlayingText == text
+                                    ? Icons.stop_rounded
+                                    : Icons.volume_up_rounded,
+                                color: const Color(0xFF37B7A5),
+                                size: 20,
+                              ),
+                              const SizedBox(width: 4),
+                              Text(
+                                _currentlyPlayingText == text
+                                    ? "Stop"
+                                    : "Listen",
+                                style: const TextStyle(
+                                  fontSize: 14.5,
+                                  color: Color(0xFF37B7A5),
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
                     ],
                   ),
                 ),
               ),
-
-              ClipRRect(
-                borderRadius: BorderRadius.only(
-                  topLeft: const Radius.circular(18),
-                  topRight: const Radius.circular(18),
-                  bottomLeft: Radius.circular(isUser ? 18 : 6),
-                  bottomRight: Radius.circular(isUser ? 6 : 18),
-                ),
-                child: BackdropFilter(
-                  filter: ImageFilter.blur(sigmaX: 16, sigmaY: 16),
-                  child: Container(
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
-                    decoration: BoxDecoration(
-                      gradient: LinearGradient(
-                        colors: isUser
-                            ? [
-                                const Color(0xAAE0F7FA),
-                                const Color(0x55B2EBF2),
-                              ]
-                            : [
-                                Colors.white.withOpacity(0.35),
-                                Colors.white.withOpacity(0.25),
-                              ],
-                        begin: Alignment.topLeft,
-                        end: Alignment.bottomRight,
-                      ),
-                      border: Border.all(
-                        color: Colors.white.withOpacity(0.4),
-                        width: 1.2,
-                      ),
-                    ),
-                    child: Text(
-                      text,
-                      style: TextStyle(
-                        fontSize: 16,
-                        color: isUser
-                            ? Colors.black.withOpacity(0.85)
-                            : Colors.black.withOpacity(0.9),
-                        height: 1.4,
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-            ],
+            ),
           ),
         ),
+
         if (isUser) ...[
           const SizedBox(width: 8),
           CircleAvatar(
             radius: 20,
-            backgroundImage: const AssetImage(aiProfileIcon),
             backgroundColor: Colors.transparent,
+            backgroundImage: _userProfileImage != null &&
+                    _userProfileImage!.isNotEmpty
+                ? NetworkImage(_userProfileImage!)
+                : const AssetImage('assets/images/ai_avatar.png')
+                    as ImageProvider,
           ),
         ],
       ],
     ),
   );
 }
+
 
 
   Widget _buildEmptyState() {
@@ -823,8 +973,6 @@ if (sender == 'system') {
     );
   }
 }
-
-
 class _TypingBubble extends StatelessWidget {
   const _TypingBubble();
 
@@ -907,6 +1055,8 @@ void initState() {
     duration: const Duration(milliseconds: 800),
   )..forward();
 }
+
+
 
 
 @override

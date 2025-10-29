@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import 'package:sympli_ai_health/app/features/notifications/notification_manager.dart';
+
 
 class SympliNavBar extends StatelessWidget {
   final int currentIndex;
@@ -69,29 +71,70 @@ class SympliNavBar extends StatelessWidget {
             ),
             const SizedBox(width: 8),
 
-            InkWell(
-              onTap: onBellTap,
-              borderRadius: BorderRadius.circular(40),
-              child: Container(
-                padding: const EdgeInsets.all(17),
-                decoration: const BoxDecoration(
-                  color: darkBg,
-                  shape: BoxShape.circle,
-                  boxShadow: [
-                    BoxShadow(
-                      color: Color(0x33000000),
-                      blurRadius: 10,
-                      offset: Offset(0, 3),
+              StreamBuilder<List<Map<String, dynamic>>>(
+                stream: notificationManager.stream,        // listens to all updates
+                initialData: notificationManager.all,      // start with current notifications
+                builder: (context, snapshot) {
+                  // ✅ Count all notifications, not just unread
+                  final total = notificationManager.all.length;
+
+                  return InkWell(
+                    onTap: onBellTap,                       // when user taps bell
+                    borderRadius: BorderRadius.circular(40),
+                    child: Stack(
+                      clipBehavior: Clip.none,
+                      children: [
+                        // Bell background and icon
+                        Container(
+                          padding: const EdgeInsets.all(17),
+                          decoration: const BoxDecoration(
+                            color: darkBg,
+                            shape: BoxShape.circle,
+                            boxShadow: [
+                              BoxShadow(
+                                color: Color(0x33000000),
+                                blurRadius: 10,
+                                offset: Offset(0, 3),
+                              ),
+                            ],
+                          ),
+                          child: const Icon(
+                            Icons.notifications_rounded,
+                            color: inactive,
+                            size: 26,
+                          ),
+                        ),
+
+                        // 🔴 Red badge showing total number
+                        if (total > 0)
+                          Positioned(
+                            right: 8,
+                            top: 8,
+                            child: Container(
+                              padding: const EdgeInsets.all(5),
+                              decoration: const BoxDecoration(
+                                color: Colors.redAccent,
+                                shape: BoxShape.circle,
+                              ),
+                              child: Text(
+                                // show 9+ if more than 9 notifications
+                                total > 9 ? '9+' : total.toString(),
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            ),
+                          ),
+                      ],
                     ),
-                  ],
-                ),
-                child: const Icon(
-                  Icons.notifications_rounded,
-                  color: inactive,
-                  size: 26, 
-                ),
+                  );
+                },
               ),
-            ),
+
+
+
           ],
         ),
       ),
