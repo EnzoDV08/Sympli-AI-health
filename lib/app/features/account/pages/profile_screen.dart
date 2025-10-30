@@ -273,6 +273,9 @@ Widget build(BuildContext context) {
               final gender = user.profile?['gender']?.toString();
               final conditions =
                   (user.profile?['conditions'] as List?)?.cast<String>() ?? [];
+                  final firebaseUser = FirebaseAuth.instance.currentUser;
+              final googlePhoto = firebaseUser?.photoURL ?? '';
+              final googleName = firebaseUser?.displayName ?? '';
 
               return SingleChildScrollView(
                 padding: const EdgeInsets.fromLTRB(16, 10, 16, 100),
@@ -283,31 +286,32 @@ Widget build(BuildContext context) {
                       child: Row(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          CircleAvatar(
-                            radius: 45,
-                            backgroundColor: const Color(0xFF37B7A5),
-                            backgroundImage: user.profileImage != null &&
-                                    user.profileImage!.isNotEmpty
-                                ? NetworkImage(user.profileImage!)
-                                : null,
-                            child: (user.profileImage == null ||
-                                    user.profileImage!.isEmpty)
-                                ? Text(
-                                    (user.username ?? 'U')
-                                        .substring(0, 1)
-                                        .toUpperCase(),
-                                    style: const TextStyle(
-                                        fontSize: 26, color: Colors.white),
-                                  )
-                                : null,
-                          ),
+                      CircleAvatar(
+                        radius: 45,
+                        backgroundColor: const Color(0xFF37B7A5),
+                        backgroundImage: (user.profileImage != null && user.profileImage!.isNotEmpty)
+                            ? NetworkImage(user.profileImage!)
+                            : (googlePhoto.isNotEmpty ? NetworkImage(googlePhoto) : null),
+                        child: (user.profileImage == null || user.profileImage!.isEmpty) &&
+                                googlePhoto.isEmpty
+                            ? Text(
+                                ((user.username?.isNotEmpty == true
+                                        ? user.username![0]
+                                        : (googleName.isNotEmpty ? googleName[0] : 'U')))
+                                    .toUpperCase(),
+                                style: const TextStyle(fontSize: 26, color: Colors.white),
+                              )
+                            : null,
+                      ),
                           const SizedBox(width: 18),
                           Expanded(
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
                                 Text(
-                                  user.username ?? '—',
+                                  user.username?.isNotEmpty == true
+                                      ? user.username!
+                                      : (googleName.isNotEmpty ? googleName : '—'),
                                   style: const TextStyle(
                                     fontSize: 22,
                                     fontWeight: FontWeight.w700,

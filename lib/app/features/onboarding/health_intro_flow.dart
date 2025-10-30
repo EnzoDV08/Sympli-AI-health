@@ -976,180 +976,243 @@ class _StepAllergyMedsState extends State<_StepAllergyMeds> {
         const _H2('Allergies & current meds'),
         const _Sub('Tap to add or select common ones below.'),
         const SizedBox(height: 10),
-        const _H3('Allergies'),
-        const SizedBox(height: 8),
-        Wrap(
-          spacing: 8,
-          runSpacing: 8,
-          children: widget.allergies
-              .map((s) => _Tag(
-                    text: s,
-                    onRemove: () {
-                      widget.allergies.remove(s);
-                      widget.onChanged();
-                      setState(() {});
-                    },
-                  ))
-              .toList(),
-        ),
-        const SizedBox(height: 8),
-        Row(
-          children: [
-            Expanded(
-              child: TextField(
-                controller: _aCtrl,
-                decoration: _fieldDeco('Type and tap Add…', Icons.vaccines),
-                onSubmitted: (_) => _addAllergy(),
+
+        // ---- ALLERGIES SECTION ----
+        Container(
+          decoration: BoxDecoration(
+            color: Colors.white.withOpacity(0.55),
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(color: Colors.white.withOpacity(0.3)),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.blue.withOpacity(0.08),
+                blurRadius: 12,
+                offset: const Offset(0, 6),
               ),
-            ),
-            const SizedBox(width: 8),
-            OutlinedButton.icon(
-              onPressed: _addAllergy,
-              icon: const Icon(Icons.add),
-              label: const Text('Add'),
-            ),
-          ],
+            ],
+          ),
+          padding: const EdgeInsets.fromLTRB(14, 14, 14, 18),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const _H3('Allergies'),
+              const SizedBox(height: 8),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: widget.allergies
+                    .map((s) => _Tag(
+                          text: s,
+                          onRemove: () {
+                            widget.allergies.remove(s);
+                            widget.onChanged();
+                            setState(() {});
+                          },
+                        ))
+                    .toList(),
+              ),
+              const SizedBox(height: 8),
+              Row(
+                children: [
+                  Expanded(
+                    child: TextField(
+                      controller: _aCtrl,
+                      decoration: _fieldDeco('Type and tap Add…', Icons.vaccines),
+                      onSubmitted: (_) => _addAllergy(),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  OutlinedButton.icon(
+                    onPressed: _addAllergy,
+                    icon: const Icon(Icons.add),
+                    label: const Text('Add'),
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: _HealthIntroFlowState.blue,
+                      side: const BorderSide(color: Color(0xFFD0E0FF)),
+                      shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(14)),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
         ),
 
         const SizedBox(height: 22),
-        const _H3('Medications'),
-        const _Sub('Tip: tap “Set schedule” to choose time & frequency.'),
-        const SizedBox(height: 8),
 
-        Row(
-          children: [
-            Expanded(
-              child: TextField(
-                controller: _mCtrl,
-                decoration: _fieldDeco('Type a med and tap Add…', Icons.medication),
-                onSubmitted: (_) => _addMed(),
+        // ---- MEDICATIONS SECTION ----
+        Container(
+          decoration: BoxDecoration(
+            color: Colors.white.withOpacity(0.55),
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(color: Colors.white.withOpacity(0.3)),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.blue.withOpacity(0.08),
+                blurRadius: 12,
+                offset: const Offset(0, 6),
               ),
-            ),
-            const SizedBox(width: 8),
-            OutlinedButton.icon(
-              onPressed: _addMed,
-              icon: const Icon(Icons.add),
-              label: const Text('Add'),
-            ),
-          ],
-        ),
-        const SizedBox(height: 10),
-
-        Wrap(
-          spacing: 12,
-          runSpacing: 12,
-          children: ['Aspirin', 'Metformin', 'Ventolin'].map((c) => _LiquidChip(
-            label: c,
-            selected: widget.meds.contains(c),
-            onTap: () {
-              setState(() {
-                if (widget.meds.contains(c)) {
-                  widget.meds.remove(c);
-                } else {
-                  widget.meds.add(c);
-                  widget.medPlans.putIfAbsent(c, () => {
-                    'repeat': 'daily',
-                    'time': '08:00',
-                    'weekday': null,
-                  });
-                }
-                widget.onChanged();
-              });
-            },
-          )).toList(),
-        ),
-        const SizedBox(height: 10),
-
-        Wrap(
-          spacing: 8,
-          runSpacing: 8,
-          children: widget.meds.map((med) {
-            final plan = widget.medPlans[med];
-            return Container(
-              padding: const EdgeInsets.only(left: 12, right: 6, top: 6, bottom: 6),
-              decoration: BoxDecoration(
-                color: const Color(0xFFEFF3F8),
-                borderRadius: BorderRadius.circular(999),
-              ),
-              child: ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 560),
-                child: Wrap(
-                  crossAxisAlignment: WrapCrossAlignment.center,
-                  spacing: 8,
-                  runSpacing: 6,
-                  children: [
-                    Text(med, style: const TextStyle(
-                      fontWeight: FontWeight.w700, color: Color(0xFF334155))),
-
-                    if (plan != null)
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                        decoration: BoxDecoration(
-                          color: const Color(0xFFDDE8FF),
-                          borderRadius: BorderRadius.circular(999),
-                        ),
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            const Icon(Icons.schedule, size: 14, color: Color(0xFF334155)),
-                            const SizedBox(width: 4),
-                            Text(_planLabel(plan), style: const TextStyle(
-                              fontWeight: FontWeight.w700, color: Color(0xFF334155))),
-                          ],
-                        ),
-                      ),
-
-                    TextButton.icon(
-                      onPressed: () => _openScheduleSheet(med),
-                      icon: const Icon(Icons.notifications_active_outlined),
-                      label: const Text('Set schedule'),
-                      style: TextButton.styleFrom(
-                        foregroundColor: _HealthIntroFlowState.blue,
-                        padding: const EdgeInsets.symmetric(horizontal: 10),
-                      ),
+            ],
+          ),
+          padding: const EdgeInsets.fromLTRB(14, 14, 14, 18),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const _H3('Medications'),
+              const _Sub('Tip: tap “Set schedule” to choose time & frequency.'),
+              const SizedBox(height: 8),
+              Row(
+                children: [
+                  Expanded(
+                    child: TextField(
+                      controller: _mCtrl,
+                      decoration: _fieldDeco('Type a med and tap Add…', Icons.medication),
+                      onSubmitted: (_) => _addMed(),
                     ),
-
-                    IconButton(
-                      tooltip: 'Remove medication',
-                      onPressed: () async {
-                        final baseId = med.hashCode & 0x7FFFFFFF;
-                        await medReminderService.cancelAllFor(baseId);
-                        final uid = FirebaseAuth.instance.currentUser?.uid;
-                        if (uid != null) {
-                          final userRef = FirebaseFirestore.instance.collection('users').doc(uid);
-                          final q = await userRef
-                              .collection('medication_reminders')
-                              .where('name', isEqualTo: med)
-                              .get();
-                          for (final d in q.docs) {
-                            await d.reference.delete();
-                          }
-                          await userRef.set({
-                            'profile': {
-                              'medications': FieldValue.arrayRemove([med]),
-                            },
-                            'updatedAt': FieldValue.serverTimestamp(),
-                          }, SetOptions(merge: true));
-                        }
-
-                        widget.medPlans.remove(med);
-                        widget.meds.remove(med);
-                        widget.onChanged();
-                        if (mounted) setState(() {});
-                      },
-                      icon: const Icon(Icons.close, size: 18, color: Color(0xFF64748B)),
-                      padding: EdgeInsets.zero,
-                      constraints: const BoxConstraints.tightFor(width: 30, height: 30),
+                  ),
+                  const SizedBox(width: 8),
+                  OutlinedButton.icon(
+                    onPressed: _addMed,
+                    icon: const Icon(Icons.add),
+                    label: const Text('Add'),
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: _HealthIntroFlowState.blue,
+                      side: const BorderSide(color: Color(0xFFD0E0FF)),
+                      shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(14)),
                     ),
-                  ],
-                ),
+                  ),
+                ],
               ),
-            );
-          }).toList(),
+              const SizedBox(height: 14),
+
+              Wrap(
+                spacing: 12,
+                runSpacing: 12,
+                children: ['Aspirin', 'Metformin', 'Ventolin']
+                    .map((c) => _LiquidChip(
+                          label: c,
+                          selected: widget.meds.contains(c),
+                          onTap: () {
+                            setState(() {
+                              if (widget.meds.contains(c)) {
+                                widget.meds.remove(c);
+                              } else {
+                                widget.meds.add(c);
+                                widget.medPlans.putIfAbsent(c, () => {
+                                      'repeat': 'daily',
+                                      'time': '08:00',
+                                      'weekday': null,
+                                    });
+                              }
+                              widget.onChanged();
+                            });
+                          },
+                        ))
+                    .toList(),
+              ),
+              const SizedBox(height: 14),
+
+              // Medication list with schedule pills
+              Column(
+                children: widget.meds.map((med) {
+                  final plan = widget.medPlans[med];
+                  return Container(
+                    margin: const EdgeInsets.only(bottom: 10),
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFF6FAFF),
+                      borderRadius: BorderRadius.circular(18),
+                      border: Border.all(color: const Color(0xFFE3ECF7)),
+                    ),
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                med,
+                                style: const TextStyle(
+                                  fontWeight: FontWeight.w800,
+                                  color: Color(0xFF1E293B),
+                                ),
+                              ),
+                              if (plan != null)
+                                Padding(
+                                  padding:
+                                      const EdgeInsets.only(top: 4, bottom: 2),
+                                  child: Text(
+                                    _planLabel(plan),
+                                    style: const TextStyle(
+                                      color: Color(0xFF475569),
+                                      fontSize: 13,
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                                ),
+                            ],
+                          ),
+                        ),
+                        TextButton.icon(
+                          onPressed: () => _openScheduleSheet(med),
+                          icon: const Icon(Icons.schedule, size: 18),
+                          label: const Text('Set schedule'),
+                          style: TextButton.styleFrom(
+                            foregroundColor: _HealthIntroFlowState.blue,
+                            padding: const EdgeInsets.symmetric(horizontal: 10),
+                          ),
+                        ),
+                        IconButton(
+                          tooltip: 'Remove medication',
+                          onPressed: () async {
+                            final baseId = med.hashCode & 0x7FFFFFFF;
+                            await medReminderService.cancelAllFor(baseId);
+                            final uid =
+                                FirebaseAuth.instance.currentUser?.uid;
+                            if (uid != null) {
+                              final userRef = FirebaseFirestore.instance
+                                  .collection('users')
+                                  .doc(uid);
+                              final q = await userRef
+                                  .collection('medication_reminders')
+                                  .where('name', isEqualTo: med)
+                                  .get();
+                              for (final d in q.docs) {
+                                await d.reference.delete();
+                              }
+                              await userRef.set({
+                                'profile': {
+                                  'medications': FieldValue.arrayRemove([med]),
+                                },
+                                'updatedAt': FieldValue.serverTimestamp(),
+                              }, SetOptions(merge: true));
+                            }
+
+                            widget.medPlans.remove(med);
+                            widget.meds.remove(med);
+                            widget.onChanged();
+                            if (mounted) setState(() {});
+                          },
+                          icon: const Icon(Icons.close,
+                              size: 18, color: Color(0xFF94A3B8)),
+                          padding: EdgeInsets.zero,
+                          constraints: const BoxConstraints.tightFor(width: 28, height: 28),
+                        ),
+                      ],
+                    ),
+                  );
+                }).toList(),
+              ),
+            ],
+          ),
         ),
       ],
     );
   }
+
 
   InputDecoration _fieldDeco(String hint, IconData icon) {
     return InputDecoration(

@@ -12,18 +12,33 @@ class LogsScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final uid = FirebaseAuth.instance.currentUser?.uid;
-    if (uid == null) {
-      return const Scaffold(
-        body: Center(child: Text("⚠️ Please sign in to view your chat history.")),
-      );
-    }
+final user = FirebaseAuth.instance.currentUser;
+final uid = user?.uid;
 
-    final chatsRef = FirebaseFirestore.instance
-        .collection('users')
-        .doc(uid)
-        .collection('chats')
-        .orderBy('lastUpdated', descending: true);
+if (user == null || uid == null) {
+  return const Scaffold(
+    body: Center(
+      child: Text(
+        "⚠️ Please sign in to view your chat history.",
+        style: TextStyle(color: Colors.grey),
+      ),
+    ),
+  );
+}
+
+Query<Map<String, dynamic>>? chatsRef;
+try {
+  chatsRef = FirebaseFirestore.instance
+      .collection('users')
+      .doc(uid)
+      .collection('chats')
+      .orderBy('lastUpdated', descending: true);
+} catch (e) {
+  debugPrint("⚠️ Firestore access failed: $e");
+  return const Scaffold(
+    body: Center(child: Text("Chat history unavailable.")),
+  );
+}
 
     return Scaffold(
       extendBodyBehindAppBar: true,
@@ -127,15 +142,24 @@ class LogsScreen extends StatelessWidget {
                   ),
                 ),
 
-                Expanded(
-                  child: StreamBuilder<QuerySnapshot>(
-                    stream: chatsRef.snapshots(),
-                    builder: (context, snapshot) {
-                      if (snapshot.connectionState == ConnectionState.waiting) {
-                        return const Center(
-                          child: CircularProgressIndicator(color: Color(0xFF37B7A5)),
-                        );
-                      }
+                    Expanded(
+                      child: StreamBuilder<QuerySnapshot>(
+                        stream: FirebaseAuth.instance.currentUser == null ? null : chatsRef.snapshots(),
+                        builder: (context, snapshot) {
+                          if (FirebaseAuth.instance.currentUser == null) {
+                            return const Center(
+                              child: Text(
+                                "User deleted or signed out.",
+                                style: TextStyle(color: Colors.grey),
+                              ),
+                            );
+                          }
+
+                          if (snapshot.connectionState == ConnectionState.waiting) {
+                            return const Center(
+                              child: CircularProgressIndicator(color: Color(0xFF37B7A5)),
+                            );
+                          }
 
                       if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
                         return _buildEmptyState(context);
@@ -168,6 +192,7 @@ class LogsScreen extends StatelessWidget {
                         },
                       );
                     },
+                    
                   ),
                 ),
               ],

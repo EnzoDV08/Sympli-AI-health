@@ -14,6 +14,14 @@
       },
       "oauth_client": [
         {
+          "client_id": "526754016534-le0v549iu3v7raooddcki9hodv98rt4s.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.example.sympli_ai_health",
+            "certificate_hash": "31c857157f30af4bd8137834f4ccb51b843e4ac0"
+          }
+        },
+        {
           "client_id": "526754016534-69sqadn7idt6tsih2ekc470qhfjbprog.apps.googleusercontent.com",
           "client_type": 3
         }
@@ -29,6 +37,13 @@
             {
               "client_id": "526754016534-69sqadn7idt6tsih2ekc470qhfjbprog.apps.googleusercontent.com",
               "client_type": 3
+            },
+            {
+              "client_id": "526754016534-5t9cbnm8mgf6sqc3vst5ooh11gritnb8.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.example.sympliAiHealth"
+              }
             }
           ]
         }

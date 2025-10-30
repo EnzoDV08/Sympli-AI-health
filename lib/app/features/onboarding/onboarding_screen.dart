@@ -2,6 +2,8 @@ import 'dart:async';
 import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import 'package:sympli_ai_health/app/features/auth/services/auth_service.dart';
+
 
 class OnboardingScreen extends StatefulWidget {
   const OnboardingScreen({super.key});
@@ -261,7 +263,52 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                                 ),
                                 backgroundColor: Colors.white,
                               ),
-                              onPressed: () => context.go('/auth?tab=in'),
+                              onPressed: () async {
+                                showDialog(
+                                  context: context,
+                                  barrierDismissible: false,
+                                  builder: (_) => const Center(
+                                    child: CircularProgressIndicator(color: Colors.blue),
+                                  ),
+                                );
+
+                                final result = await AuthService.instance.signInWithGoogle();
+
+                                if (context.mounted) Navigator.of(context).pop();
+
+                                if (result != null) {
+                                  final user = result['user'];
+                                  final firstTime = result['firstTime'] as bool;
+
+                                  if (context.mounted) {
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      SnackBar(
+                                        content: Text('Welcome, ${user.displayName ?? "User"}!'),
+                                        backgroundColor: Colors.green.shade600,
+                                        behavior: SnackBarBehavior.floating,
+                                      ),
+                                    );
+
+                                    if (firstTime) {
+                                      context.go('/intro');
+                                    } else {
+                                      context.go('/home'); 
+                                    }
+                                  }
+                                } else {
+                                  if (context.mounted) {
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      const SnackBar(
+                                        content: Text('Google sign-in cancelled or failed.'),
+                                        backgroundColor: Colors.redAccent,
+                                        behavior: SnackBarBehavior.floating,
+                                      ),
+                                    );
+                                  }
+                                }
+                              },
+
+
                               child: Row(
                                 mainAxisAlignment: MainAxisAlignment.center,
                                 children: [

@@ -13,16 +13,50 @@ import 'package:sympli_ai_health/app/features/account/pages/settings_screen.dart
 import 'package:sympli_ai_health/app/features/chat_ai/pages/chat_ai_screen.dart';
 import 'package:sympli_ai_health/app/features/logs/pages/logs_screen.dart';
 import 'package:sympli_ai_health/app/features/notifications/pages/notifications_screen.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'dart:async';
 
 
 final _rootNavigatorKey = GlobalKey<NavigatorState>();
+
+class GoRouterRefreshStream extends ChangeNotifier {
+  GoRouterRefreshStream(Stream<dynamic> stream) {
+    notifyListeners();
+    _sub = stream.asBroadcastStream().listen((_) => notifyListeners());
+  }
+  late final StreamSubscription<dynamic> _sub;
+  @override
+  void dispose() {
+    _sub.cancel();
+    super.dispose();
+  }
+}
+
 final routerProvider = Provider<GoRouter>((ref) {
   return GoRouter(
-    navigatorKey: _rootNavigatorKey, 
-    initialLocation: '/splash',
+    navigatorKey: _rootNavigatorKey,
     debugLogDiagnostics: true,
-    routes: [
+    initialLocation: '/splash',
 
+    refreshListenable:
+        GoRouterRefreshStream(FirebaseAuth.instance.authStateChanges()),
+
+    redirect: (context, state) {
+      final user = FirebaseAuth.instance.currentUser;
+      final currentPath = state.uri.toString();
+
+      if (currentPath == '/splash' ||
+          currentPath == '/onboarding' ||
+          currentPath.startsWith('/auth')) {
+        return null;
+      }
+
+      if (user == null) return '/onboarding';
+
+      return null;
+    },
+
+    routes: [
       GoRoute(
         path: '/splash',
         builder: (context, state) => const SplashScreen(),
@@ -64,16 +98,13 @@ final routerProvider = Provider<GoRouter>((ref) {
                           break;
                       }
                     },
-                    onBellTap: () {
-                      context.go('/notifications');
-                    },
+                    onBellTap: () => context.go('/notifications'),
                   ),
                 ),
               ],
             ),
           );
         },
-
         routes: [
           GoRoute(
             path: '/home',
@@ -83,7 +114,6 @@ final routerProvider = Provider<GoRouter>((ref) {
             path: '/logs',
             builder: (context, state) => const LogsScreen(),
           ),
-
           GoRoute(
             path: '/account',
             builder: (context, state) => const AccountScreen(),
@@ -105,28 +135,30 @@ final routerProvider = Provider<GoRouter>((ref) {
         ],
       ),
 
- GoRoute(
-  name: 'chat-ai',
-  path: '/chat-ai',
-  parentNavigatorKey: _rootNavigatorKey,
-  pageBuilder: (context, state) {
-    final extra = state.extra;
-    String? chatId;
-    String? followUpCondition;
+      GoRoute(
+        name: 'chat-ai',
+        path: '/chat-ai',
+        parentNavigatorKey: _rootNavigatorKey,
+        pageBuilder: (context, state) {
+          final extra = state.extra;
+          String? chatId;
+          String? followUpCondition;
 
-    if (extra is String) {
-      chatId = extra;
-    } else if (extra is Map<String, dynamic>) {
-      chatId = extra['chatId'] as String?;
-      followUpCondition = extra['followUpCondition'] as String?;
-    }
+          if (extra is String) {
+            chatId = extra;
+          } else if (extra is Map<String, dynamic>) {
+            chatId = extra['chatId'] as String?;
+            followUpCondition = extra['followUpCondition'] as String?;
+          }
+
           return CustomTransitionPage(
             key: state.pageKey,
             child: ChatAIScreen(
               existingChatId: chatId,
               followUpCondition: followUpCondition,
             ),
-            transitionsBuilder: (context, animation, secondaryAnimation, child) {
+            transitionsBuilder:
+                (context, animation, secondaryAnimation, child) {
               const begin = Offset(0.0, 1.0);
               const end = Offset.zero;
               const curve = Curves.easeInOutCubic;
@@ -140,10 +172,7 @@ final routerProvider = Provider<GoRouter>((ref) {
                 position: animation.drive(tween),
                 child: FadeTransition(
                   opacity: animation.drive(fadeTween),
-                  child: Container(
-                    color: Colors.white,
-                    child: child,
-                  ),
+                  child: Container(color: Colors.white, child: child),
                 ),
               );
             },

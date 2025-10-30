@@ -65,14 +65,19 @@ class _ChatAIScreenState extends State<ChatAIScreen> with SingleTickerProviderSt
         .doc(uid)
         .snapshots();
 
-    _userStream!.listen((snapshot) {
-      final data = snapshot.data();
-      if (data != null && data['profileImage'] != null) {
-        setState(() => _userProfileImage = data['profileImage']);
-      } else {
-        setState(() => _userProfileImage = null);
-      }
-    });
+_userStream!.listen((snapshot) {
+  final data = snapshot.data();
+  final firebaseUser = FirebaseAuth.instance.currentUser;
+  final googlePhoto = firebaseUser?.photoURL ?? '';
+
+  if (data != null && data['profileImage'] != null && data['profileImage'].toString().isNotEmpty) {
+    setState(() => _userProfileImage = data['profileImage']);
+  } else if (googlePhoto.isNotEmpty) {
+    setState(() => _userProfileImage = googlePhoto);
+  } else {
+    setState(() => _userProfileImage = null);
+  }
+});
   }
 
       if (widget.existingChatId != null) {
@@ -154,7 +159,6 @@ Future<void> _sendMessage() async {
           'time': DateTime.now(),
         });
 
-        _speakText(aiResponse.text);
 
         _messages.removeWhere((m) => m['sender'] == 'reminder_proposal');
 
@@ -920,18 +924,43 @@ Widget _buildFancyBubble(Map<String, dynamic> msg) {
           ),
         ),
 
-        if (isUser) ...[
-          const SizedBox(width: 8),
-          CircleAvatar(
-            radius: 20,
-            backgroundColor: Colors.transparent,
-            backgroundImage: _userProfileImage != null &&
-                    _userProfileImage!.isNotEmpty
-                ? NetworkImage(_userProfileImage!)
-                : const AssetImage('assets/images/ai_avatar.png')
-                    as ImageProvider,
-          ),
-        ],
+if (isUser) ...[
+  const SizedBox(width: 8),
+
+  Builder(
+    builder: (_) {
+      final firebaseUser = FirebaseAuth.instance.currentUser;
+      final googlePhoto = firebaseUser?.photoURL ?? '';
+
+
+      final imageProvider = (_userProfileImage != null && _userProfileImage!.isNotEmpty)
+          ? NetworkImage(_userProfileImage!)
+          : (googlePhoto.isNotEmpty
+              ? NetworkImage(googlePhoto)
+              : const AssetImage('assets/images/ai_avatar.png') as ImageProvider);
+
+      return CircleAvatar(
+        radius: 22,
+        backgroundColor: const Color(0xFF37B7A5),
+        backgroundImage: imageProvider,
+        child: (_userProfileImage == null || _userProfileImage!.isEmpty) &&
+                googlePhoto.isEmpty
+            ? Text(
+                ((firebaseUser?.displayName?.isNotEmpty == true
+                        ? firebaseUser!.displayName![0]
+                        : 'U'))
+                    .toUpperCase(),
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                ),
+              )
+            : null,
+      );
+    },
+  ),
+],
       ],
     ),
   );
