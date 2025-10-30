@@ -133,6 +133,15 @@ You can download it here:
 
 ---
 
+🎥 **Watch the Full Demonstration Video**
+
+> Experience Sympli-AI Health in action!  
+> 🩺 See how AI chat, medication reminders, and voice interaction come together.
+
+👉 [**Watch the Demo on Google Drive**](https://drive.google.com/file/d/1kiyrSsoJhMET6uzP3uN9QxNcUSxuARf8/view?usp=sharing)
+
+---
+
 ## 🧠 Creator Log
 
 - 🧩 Integrated GPT-4 AI for natural healthcare conversation.
