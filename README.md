@@ -15,7 +15,7 @@
 **Sympli-AI Health** isn’t just a health app — it’s your **AI-powered companion** for smarter, more personal healthcare.  
 Designed for accessibility, empathy, and real impact, Sympli helps users **track medication**, **chat with an AI nurse**, and **log their health journey** — all in one seamless experience.
 
-![Mockup Image](./assets/Sympli_Gif.gif)  
+![Mockup Image](./assets/Sympli_Gif.gif)
 ![Mockup Image](./assets/Sympli_Mockups.png)
 
 ---
@@ -122,7 +122,7 @@ flutter build ios   # For iOS
 6. **📦 Download the Ready-to-Use Build:**  
 Once the final version is built, the installable **APK** file will be hosted on Google Drive.  
 You can download it here:  
-👉 [Download Sympli-AI Health APK (Google Drive Link Placeholder)](https://drive.google.com/drive/folders/1tXDQiY-1GThqrzqFIGjddvy8vzTryGVV?usp=drive_link)
+👉 [Download Sympli-AI Health APK](https://drive.google.com/drive/folders/1tXDQiY-1GThqrzqFIGjddvy8vzTryGVV?usp=drive_link)
 
 ---
 
