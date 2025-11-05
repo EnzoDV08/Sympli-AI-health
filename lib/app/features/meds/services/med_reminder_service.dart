@@ -453,36 +453,46 @@ Future<String> createOrUpdateManualReminder({
   }
   final reminderId = docRef.id;
 
-  final record = <String, dynamic>{
-    'reminderId': reminderId,
-    'userId': uid,
-    'name': medName,
-    'dosage': dosage ?? '',
-    'instructions': instructions ?? '',
-    'active': active,
-    'createdAt': FieldValue.serverTimestamp(),
+logI("🕒 Final plan before Firestore save: repeat=${plan.repeat}, time=${plan.time}, tz=${plan.timezone}", name: "MedReminderService");
+
+final record = <String, dynamic>{
+  'reminderId': reminderId,
+  'userId': uid,
+  'name': medName,
+  'dosage': dosage ?? '',
+  'instructions': instructions ?? '',
+  'active': active,
+  'createdAt': FieldValue.serverTimestamp(),
+  'plan': {
     'repeat': plan.repeat,
     'time': plan.time,
-    if (plan.n != null) 'n': plan.n,
-    if (plan.days != null) 'days': plan.days,
-    if (plan.hours != null) 'hours': plan.hours,
     'timezone': plan.timezone,
-    'plan': plan.toMap(),
-  };
+    if (plan.n != null) 'n': plan.n,
+    if (plan.days != null && plan.days!.isNotEmpty) 'days': plan.days,
+    if (plan.hours != null) 'hours': plan.hours,
+  },
+};
 
-  final batch = db.batch();
-  batch.set(docRef, record, SetOptions(merge: true));
-  batch.set(
-    userRef,
-    {
-      'profile': {
-        'medications': FieldValue.arrayUnion([medName]),
-      },
-      'updatedAt': FieldValue.serverTimestamp(),
+final batch = db.batch();
+batch.set(docRef, record, SetOptions(merge: true));
+batch.set(
+  userRef,
+  {
+    'profile': {
+      'medications': FieldValue.arrayUnion([medName]),
     },
-    SetOptions(merge: true),
-  );
+    'updatedAt': FieldValue.serverTimestamp(),
+  },
+  SetOptions(merge: true),
+);
+
+try {
   await batch.commit();
+  logI("✅ Firestore batch committed successfully for $reminderId", name: "MedReminderService");
+} catch (e, st) {
+  logE("❌ Firestore batch commit FAILED for $reminderId", e, st, name: "MedReminderService");
+  rethrow;
+}
 
   if (alsoScheduleLocally) {
     final baseId = reminderId.hashCode & 0x7FFFFFFF;

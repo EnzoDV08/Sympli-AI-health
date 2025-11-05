@@ -74,10 +74,37 @@ Future<void> _saveMedicationReminder(String medName, String dosage, String time)
     if (uid == null) return;
 
     final userRef = _firestore.collection('users').doc(uid);
-    await userRef.set({
-      'medications': FieldValue.arrayUnion([medName]),
-      'updatedAt': FieldValue.serverTimestamp(),
-    }, SetOptions(merge: true));
+
+    // 🔍 Step 1: Normalize medication name
+    final normalizedMed = medName.trim().toLowerCase();
+
+    // 🔍 Step 2: Check if medication already exists in user profile
+    final userSnap = await userRef.get();
+    final existingMeds = (userSnap.data()?['medications'] as List?) ?? [];
+    final alreadyExists = existingMeds.any(
+      (m) => (m as String).trim().toLowerCase() == normalizedMed,
+    );
+
+    if (!alreadyExists) {
+      await userRef.set({
+        'medications': FieldValue.arrayUnion([medName]),
+        'updatedAt': FieldValue.serverTimestamp(),
+      }, SetOptions(merge: true));
+    } else {
+      log.logI('⚠️ Skipped duplicate medication $medName in profile.');
+    }
+
+    // 🔍 Step 3: Prevent duplicate reminder document
+    final reminderQuery = await userRef
+        .collection('medication_reminders')
+        .where('name', isEqualTo: medName)
+        .limit(1)
+        .get();
+
+    if (reminderQuery.docs.isNotEmpty) {
+      log.logI('⚠️ Reminder for $medName already exists. Skipping.');
+      return;
+    }
 
     final reminderRef = userRef.collection('medication_reminders').doc();
     final reminderData = {
@@ -106,6 +133,7 @@ Future<void> _saveMedicationReminder(String medName, String dosage, String time)
   }
 }
 
+
 Future<void> _finish() async {
   if (!_validStep || _saving) return;
   setState(() => _saving = true);
@@ -115,22 +143,21 @@ Future<void> _finish() async {
 
     final userRef = FirebaseFirestore.instance.collection('users').doc(uid);
 
-    await userRef.set({
-      'onboardingComplete': true,
-      'profile': {
-        'gender': _gender,
-        'age': int.tryParse(_ageRange ?? ''),
-        'conditions': _conditions.toList(),
-        'allergies': _allergies.toList(),
-        'medications': _meds.toList(), 
-      },
-      'updatedAt': FieldValue.serverTimestamp(),
-    }, SetOptions(merge: true));
+await userRef.set({
+  'onboardingComplete': true,
+  'profile': {
+    'gender': _gender,
+    'age': int.tryParse(_ageRange ?? ''),
+    'conditions': _conditions.toList(),
+    'allergies': _allergies.toList(),
+  },
+  'updatedAt': FieldValue.serverTimestamp(),
+}, SetOptions(merge: true));
 
     for (final med in _meds) {
       await _saveMedicationReminder(med, '', '08:00');
     }
-
+    await _cleanupDuplicateMeds();
     log.logI('💊 Saved ${_meds.length} medication reminders for user $uid');
 
     setState(() => _finishing = true);
@@ -154,6 +181,33 @@ Future<void> _finish() async {
     if (mounted) setState(() => _saving = false);
   }
 }
+
+Future<void> _cleanupDuplicateMeds() async {
+  final uid = _auth.currentUser?.uid;
+  if (uid == null) return;
+
+  final userRef = _firestore.collection('users').doc(uid);
+  final snap = await userRef.get();
+  if (!snap.exists) return;
+
+  final data = snap.data() ?? {};
+  final medsTop = List<String>.from(data['medications'] ?? []);
+  final profile = Map<String, dynamic>.from(data['profile'] ?? {});
+  final medsProfile = List<String>.from(profile['medications'] ?? []);
+
+  // ✅ Merge and remove duplicates (case-insensitive)
+  final combined = {
+    for (final m in [...medsTop, ...medsProfile]) m.toLowerCase(): m
+  }.values.toList();
+
+  await userRef.update({
+    'medications': combined,
+    'profile.medications': FieldValue.delete(),
+  });
+
+  log.logI('🧹 Cleaned duplicate meds: ${combined.join(', ')}');
+}
+
 
   @override
   Widget build(BuildContext context) {
@@ -851,23 +905,37 @@ class _StepAllergyMedsState extends State<_StepAllergyMeds> {
     setState(() {});
   }
 
-  void _addMed() {
-    final v = _mCtrl.text.trim();
-    if (v.isEmpty) return;
-    final med = _titleCase(v);
-    widget.meds.add(med);
+void _addMed() {
+  final v = _mCtrl.text.trim();
+  if (v.isEmpty) return;
+  final med = _titleCase(v);
+
+  // 🔒 Prevent duplicates (case-insensitive)
+  final exists = widget.meds.any(
+    (m) => m.toLowerCase() == med.toLowerCase(),
+  );
+
+  if (exists) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('$med is already added.')),
+    );
     _mCtrl.clear();
-
-    widget.medPlans.putIfAbsent(med, () => {
-      'repeat': 'daily',
-      'time': '08:00',
-      'weekday': null,
-    });
-
-    widget.onChanged();
-    setState(() {});
-    _openScheduleSheet(med);
+    return;
   }
+
+  widget.meds.add(med);
+  _mCtrl.clear();
+
+  widget.medPlans.putIfAbsent(med, () => {
+    'repeat': 'daily',
+    'time': '08:00',
+    'weekday': null,
+  });
+
+  widget.onChanged();
+  setState(() {});
+  _openScheduleSheet(med);
+}
 
   String _titleCase(String s) => s
       .split(' ')

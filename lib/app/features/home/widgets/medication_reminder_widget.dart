@@ -1,6 +1,5 @@
 import 'package:sympli_ai_health/app/features/notifications/notification_manager.dart';
 import 'dart:async';
-import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:sympli_ai_health/app/features/account/services/profile_repository.dart';
@@ -122,7 +121,9 @@ void _updateRemaining() {
       int.parse(parts[1]),
     );
 
-    if (next.isBefore(now)) next = next.add(const Duration(days: 1));
+    if (next.isBefore(now.subtract(const Duration(minutes: 1)))) {
+  next = next.add(const Duration(days: 1));
+}
 
     final diff = next.difference(now);
 

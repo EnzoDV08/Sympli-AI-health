@@ -6,16 +6,16 @@ import 'package:sympli_ai_health/app/utils/isolate_reminder.dart';
 class ReminderCommitService {
   final _auth = FirebaseAuth.instance;
   final medReminderService = MedReminderService(notificationsPlugin);
-
-  static const String _defaultTime = '08:00';
   static const String _defaultTimezone = 'SAST';
 
   Future<void> commitMedicationProposal(Map<String, dynamic> p) async {
+     logI("💾 commitMedicationProposal CALLED with payload: ${p.toString()}", name: "AI"); 
     final uid = _auth.currentUser?.uid;
     if (uid == null) {
       logW("Cannot commit medication: no logged-in user", name: "AI");
       return;
     }
+  logI("🏁 commitMedicationProposal FINISHED for ${p['name']}", name: "AI");
 
     final String name = (p['name'] ?? '').toString().trim();
     final String dosage = (p['dosage'] ?? '').toString().trim();
@@ -26,213 +26,166 @@ class ReminderCommitService {
       return;
     }
 
-    String safeTime(dynamic v) {
-      final s = (v ?? '').toString();
-      final reg = RegExp(r'^\d{2}:\d{2}$');
-      if (!reg.hasMatch(s)) return _defaultTime;
-      final parts = s.split(':');
-      final h = int.tryParse(parts[0]) ?? -1;
-      final m = int.tryParse(parts[1]) ?? -1;
-      return (h >= 0 && h < 24 && m >= 0 && m < 60) ? s : _defaultTime;
-    }
+final schedRaw = p['schedule'];
+if (schedRaw is Map) {
+  final sched = Map<String, dynamic>.from(schedRaw);
+  if (sched.containsKey('type') && !sched.containsKey('repeat')) {
+    sched['repeat'] = sched['type'];
+  }
 
-    final sched = p['schedule'];
-    if (sched is Map) {
-      final type = (sched['type'] ?? '').toString();
-      final tz = (sched['timezone'] ?? _defaultTimezone).toString();
+  final repeatType = (sched['repeat'] ?? 'daily').toString();
+  final tz = (sched['timezone'] ?? _defaultTimezone).toString();
 
-      switch (type) {
-        case 'daily':
-          {
-            final time = safeTime(sched['time']);
-            await medReminderService.saveAiReminderAndUpdateUser(
-              uid: uid,
-              name: name,
-              dosage: dosage,
-              instructions: instructions,
-              repeat: 'daily',
-              time: time,
-              timezone: tz,
-            );
+  String adjustedTime;
+  final now = DateTime.now();
 
-            ReminderIsolate.runInBackground({
-              'uid': uid,
-              'name': name,
-              'dosage': dosage,
-              'instructions': instructions,
-              'repeat': 'daily',
-              'time': time,
-              'timezone': tz,
-            });
+  if (sched['time'] != null && sched['time'].toString().contains(':')) {
+    adjustedTime = sched['time'].toString().trim();
+    logI("✅ Using AI-specified time: $adjustedTime", name: "AI");
+  } else {
+    final roundedMinutes = (now.minute / 5).round() * 5;
+    adjustedTime =
+        "${now.hour.toString().padLeft(2, '0')}:${roundedMinutes.toString().padLeft(2, '0')}";
+    logI("🕒 No valid time provided — using current time: $adjustedTime", name: "AI");
+  }
 
-            logI("✅ Saved AI reminder (daily at $time) for $name", name: "AI");
-            return;
-          }
+  switch (repeatType) {
+    case 'daily':
+      await medReminderService.saveAiReminderAndUpdateUser(
+        uid: uid,
+        name: name,
+        dosage: dosage,
+        instructions: instructions,
+        repeat: 'daily',
+        time: adjustedTime,
+        timezone: tz,
+      );
 
-        case 'weekly':
-          {
-            final time = safeTime(sched['time']);
-            final daysNames =
-                (sched['days'] as List?)?.map((e) => e.toString()).toList() ?? [];
-            final days = medReminderService.parseWeekdays(daysNames);
+      ReminderIsolate.runInBackground({
+        'uid': uid,
+        'name': name,
+        'dosage': dosage,
+        'instructions': instructions,
+        'repeat': 'daily',
+        'time': adjustedTime,
+        'timezone': tz,
+      });
 
-            await medReminderService.saveAiReminderAndUpdateUser(
-              uid: uid,
-              name: name,
-              dosage: dosage,
-              instructions: instructions,
-              repeat: 'weekly',
-              time: time,
-              timezone: tz,
-              days: days,
-            );
+      logI("✅ Saved AI reminder (daily at $adjustedTime) for $name", name: "AI");
+      return;
 
-            ReminderIsolate.runInBackground({
-              'uid': uid,
-              'name': name,
-              'dosage': dosage,
-              'instructions': instructions,
-              'repeat': 'weekly',
-              'time': time,
-              'timezone': tz,
-              'days': days,
-            });
+    case 'weekly':
+      final daysNames =
+          (sched['days'] as List?)?.map((e) => e.toString()).toList() ?? [];
+      final days = medReminderService.parseWeekdays(daysNames);
+      await medReminderService.saveAiReminderAndUpdateUser(
+        uid: uid,
+        name: name,
+        dosage: dosage,
+        instructions: instructions,
+        repeat: 'weekly',
+        time: adjustedTime,
+        timezone: tz,
+        days: days,
+      );
 
-            logI("✅ Saved AI reminder (weekly ${days.join(',')}) for $name",
-                name: "AI");
-            return;
-          }
+      ReminderIsolate.runInBackground({
+        'uid': uid,
+        'name': name,
+        'dosage': dosage,
+        'instructions': instructions,
+        'repeat': 'weekly',
+        'time': adjustedTime,
+        'timezone': tz,
+        'days': days,
+      });
 
-        case 'everyN':
-          {
-            final time = safeTime(sched['time']);
-            final int? n = (sched['n'] is num)
-                ? (sched['n'] as num).round()
-                : int.tryParse((sched['n'] ?? '').toString());
+      logI("✅ Saved AI reminder (weekly ${days.join(',')}) for $name", name: "AI");
+      return;
 
-            await medReminderService.saveAiReminderAndUpdateUser(
-              uid: uid,
-              name: name,
-              dosage: dosage,
-              instructions: instructions,
-              repeat: (n != null && n > 0) ? 'everyN' : 'daily',
-              time: time,
-              timezone: tz,
-              n: n,
-            );
+    case 'everyN':
+      final int? n = (sched['n'] is num)
+          ? (sched['n'] as num).round()
+          : int.tryParse((sched['n'] ?? '').toString());
+      await medReminderService.saveAiReminderAndUpdateUser(
+        uid: uid,
+        name: name,
+        dosage: dosage,
+        instructions: instructions,
+        repeat: (n != null && n > 0) ? 'everyN' : 'daily',
+        time: adjustedTime,
+        timezone: tz,
+        n: n,
+      );
+      ReminderIsolate.runInBackground({
+        'uid': uid,
+        'name': name,
+        'dosage': dosage,
+        'instructions': instructions,
+        'repeat': (n != null && n > 0) ? 'everyN' : 'daily',
+        'time': adjustedTime,
+        'timezone': tz,
+        'n': n,
+      });
+      logI(
+          "✅ Saved AI reminder (${n != null && n > 0 ? 'every $n days' : 'daily'} at $adjustedTime) for $name",
+          name: "AI");
+      return;
 
-            ReminderIsolate.runInBackground({
-              'uid': uid,
-              'name': name,
-              'dosage': dosage,
-              'instructions': instructions,
-              'repeat': (n != null && n > 0) ? 'everyN' : 'daily',
-              'time': time,
-              'timezone': tz,
-              'n': n,
-            });
+    case 'everyNHours':
+      int? hours;
+      final raw = sched['hours'];
+      if (raw is num) hours = raw.round();
+      if (raw is String) hours ??= int.tryParse(raw.trim());
+      final repType = (hours != null && hours > 0) ? 'everyNHours' : 'daily';
+      await medReminderService.saveAiReminderAndUpdateUser(
+        uid: uid,
+        name: name,
+        dosage: dosage,
+        instructions: instructions,
+        repeat: repType,
+        time: adjustedTime,
+        timezone: tz,
+        hours: hours,
+      );
+      ReminderIsolate.runInBackground({
+        'uid': uid,
+        'name': name,
+        'dosage': dosage,
+        'instructions': instructions,
+        'repeat': repType,
+        'time': adjustedTime,
+        'timezone': tz,
+        'hours': hours,
+      });
+      logI("✅ Saved AI reminder ($repType at $adjustedTime) for $name", name: "AI");
+      return;
 
-            logI(
-                "✅ Saved AI reminder (${n != null && n > 0 ? 'every $n days' : 'daily'} at $time) for $name",
-                name: "AI");
-            return;
-          }
+    default:
+await medReminderService.saveAiReminderAndUpdateUser(
+  uid: uid,
+  name: name,
+  dosage: dosage,
+  instructions: instructions,
+  repeat: 'daily',
+  time: adjustedTime, 
+  timezone: tz,
+);
+ReminderIsolate.runInBackground({
+  'uid': uid,
+  'name': name,
+  'dosage': dosage,
+  'instructions': instructions,
+  'repeat': 'daily',
+  'time': adjustedTime,
+  'timezone': tz,
+});
+logW("Unknown schedule type; fell back to daily at $adjustedTime", name: "AI");
+return;
+  }
+}
 
-        case 'everyNHours':
-          {
-            int? hours;
-            final raw = sched['hours'];
-            if (raw is num) hours = raw.round();
-            if (raw is String) hours ??= int.tryParse(raw.trim());
 
-            final repeatType =
-                (hours != null && hours > 0) ? 'everyNHours' : 'daily';
 
-            await medReminderService.saveAiReminderAndUpdateUser(
-              uid: uid,
-              name: name,
-              dosage: dosage,
-              instructions: instructions,
-              repeat: repeatType,
-              time: _defaultTime,
-              timezone: tz,
-              hours: hours,
-            );
-
-            ReminderIsolate.runInBackground({
-              'uid': uid,
-              'name': name,
-              'dosage': dosage,
-              'instructions': instructions,
-              'repeat': repeatType,
-              'time': _defaultTime,
-              'timezone': tz,
-              'hours': hours,
-            });
-
-            logI(
-                "✅ Saved AI reminder (${repeatType == 'everyNHours' ? 'every $hours hours' : 'daily'}) for $name",
-                name: "AI");
-            return;
-          }
-
-        default:
-          {
-            await medReminderService.saveAiReminderAndUpdateUser(
-              uid: uid,
-              name: name,
-              dosage: dosage,
-              instructions: instructions,
-              repeat: 'daily',
-              time: _defaultTime,
-              timezone: _defaultTimezone,
-            );
-
-            ReminderIsolate.runInBackground({
-              'uid': uid,
-              'name': name,
-              'dosage': dosage,
-              'instructions': instructions,
-              'repeat': 'daily',
-              'time': _defaultTime,
-              'timezone': _defaultTimezone,
-            });
-
-            logW("Unknown schedule type; fell back to daily", name: "AI");
-            return;
-          }
-      }
-    }
-
-    int? hours;
-    final freqRaw = p['frequency_hours'];
-    if (freqRaw is num) hours = freqRaw.round();
-    if (freqRaw is String) hours ??= int.tryParse(freqRaw.trim());
-
-    final repeatType = (hours != null && hours > 0) ? 'everyNHours' : 'daily';
-
-    await medReminderService.saveAiReminderAndUpdateUser(
-      uid: uid,
-      name: name,
-      dosage: dosage,
-      instructions: instructions,
-      repeat: repeatType,
-      time: _defaultTime,
-      timezone: _defaultTimezone,
-      hours: hours,
-    );
-
-    ReminderIsolate.runInBackground({
-      'uid': uid,
-      'name': name,
-      'dosage': dosage,
-      'instructions': instructions,
-      'repeat': repeatType,
-      'time': _defaultTime,
-      'timezone': _defaultTimezone,
-      'hours': hours,
-    });
-
-    logI("✅ Saved AI reminder ($repeatType) for $name", name: "AI");
   }
 }

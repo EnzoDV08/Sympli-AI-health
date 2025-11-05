@@ -364,19 +364,64 @@ import 'package:sympli_ai_health/app/features/chat_ai/service/reminder_commit_se
           );
         }
 
-        if (extracted?['action'] == 'CONTINUE_CONVERSATION' &&
-            extracted?['medication_proposal'] is Map &&
-            (extracted!['medication_proposal'] as Map).isNotEmpty) {
-          try {
-            await _reminderCommitService.commitMedicationProposal(
-              Map<String, dynamic>.from(extracted['medication_proposal']),
-            );
+if (extracted?['action'] == 'CONTINUE_CONVERSATION' &&
+    extracted?['medication_proposal'] is Map &&
+    (extracted!['medication_proposal'] as Map).isNotEmpty) {
+  try {
+    final proposal = Map<String, dynamic>.from(extracted['medication_proposal']);
 
-            logI("🧠 Partial reminder progress saved.", name: "AI");
-          } catch (e) {
-            logW("Failed to save partial reminder: $e", name: "AI");
-          }
-        }
+    if (proposal['schedule'] is Map) {
+      final sched = Map<String, dynamic>.from(proposal['schedule']);
+      if (sched['time'] == null || sched['time'].toString().isEmpty) {
+        final now = DateTime.now();
+        final hour = now.hour.toString().padLeft(2, '0');
+        final minute = now.minute.toString().padLeft(2, '0');
+        sched['time'] = "$hour:$minute";
+        logI("🕒 Injected time before commit: ${sched['time']}", name: "AI");
+      } else {
+        logI("✅ AI-specified time found before commit: ${sched['time']}", name: "AI");
+      }
+      sched['timezone'] = sched['timezone'] ?? "SAST";
+      proposal['schedule'] = sched;
+    }
+
+    await _reminderCommitService.commitMedicationProposal(proposal);
+    logI("🧠 Partial reminder progress saved (with time).", name: "AI");
+  } catch (e) {
+    logW("Failed to save partial reminder: $e", name: "AI");
+  }
+}
+
+if (extracted?['action'] == 'PROPOSE_REMINDER' &&
+    extracted?['medication_proposal'] is Map &&
+    (extracted!['medication_proposal'] as Map).isNotEmpty) {
+  try {
+    final proposal = Map<String, dynamic>.from(extracted['medication_proposal']);
+
+    if (proposal['schedule'] is Map) {
+      final sched = Map<String, dynamic>.from(proposal['schedule']);
+
+      if (sched['time'] == null || sched['time'].toString().trim().isEmpty) {
+        final now = DateTime.now();
+        sched['time'] =
+            "${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}";
+        logI("🕒 Injected fallback time: ${sched['time']}", name: "AI");
+      } else {
+        logI("✅ AI provided time: ${sched['time']}", name: "AI");
+      }
+
+      sched['timezone'] ??= "SAST";
+      proposal['schedule'] = sched;
+    } else {
+      logW("⚠️ Missing schedule map in proposal", name: "AI");
+    }
+
+    await _reminderCommitService.commitMedicationProposal(proposal);
+    logI("💾 Final reminder saved to Firestore (PROPOSE_REMINDER).", name: "AI");
+  } catch (e, st) {
+    logE("❌ Failed to save final reminder", e, st, name: "AI");
+  }
+}
 
         final aiReply =
             extracted?['response_text'] ??
@@ -408,6 +453,26 @@ import 'package:sympli_ai_health/app/features/chat_ai/service/reminder_commit_se
             extracted['medication_proposal'] as Map,
           );
         }
+if (proposal != null && proposal['schedule'] is Map) {
+  final sched = Map<String, dynamic>.from(proposal['schedule']);
+
+  // if no valid time, default to NOW (local)
+  if (sched['time'] == null || sched['time'].toString().isEmpty) {
+    final now = DateTime.now();
+    final hour = now.hour.toString().padLeft(2, '0');
+    final minute = now.minute.toString().padLeft(2, '0');
+    sched['time'] = "$hour:$minute";
+    logI("🕒 Injected local time: ${sched['time']}", name: "AI");
+  } else {
+    logI("✅ AI-specified time found: ${sched['time']}", name: "AI");
+  }
+
+  // ensure timezone always exists
+  sched['timezone'] = sched['timezone'] ?? "SAST";
+
+  // update proposal back
+  proposal['schedule'] = sched;
+}
 
         return AIResponse(text: aiReply, medicationProposal: proposal);
       } catch (e, st) {

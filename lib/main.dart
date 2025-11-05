@@ -2,7 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
-import 'package:timezone/data/latest.dart' as tz;
+import 'package:timezone/data/latest_all.dart' as tz;
+import 'package:timezone/timezone.dart' as tz; 
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:sympli_ai_health/app/features/meds/services/med_reminder_service.dart';
 import 'package:sympli_ai_health/firebase_options.dart';
@@ -15,6 +16,7 @@ final GlobalKey<NavigatorState> _navKey = GlobalKey<NavigatorState>();
 
 Future<void> _initNotifs() async {
   tz.initializeTimeZones();
+  tz.setLocalLocation(tz.getLocation('Africa/Johannesburg'));
 
   const android = AndroidInitializationSettings('@mipmap/ic_launcher');
   const ios = DarwinInitializationSettings(
